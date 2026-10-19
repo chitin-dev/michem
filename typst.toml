@@ -1,0 +1,10 @@
+[package]
+name = "michem"
+version = "0.1.0"
+entrypoint = "lib.typ"
+license = "Apache-2.0"
+description = "Chemical structures and reaction diagrams powered by Chitin and CeTZ"
+compiler = "0.14.0"
+keywords = ["chemistry", "smiles", "molecule", "reaction", "wasm"]
+categories = ["visualization"]
+exclude = ["crates/**", "target/**", "scripts/**", "examples/**", "docs/**", "Cargo.toml", "Cargo.lock", "justfile", "rustfmt.toml", ".gitignore", ".github/**"]

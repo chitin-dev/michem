@@ -1,0 +1,28 @@
+[workspace]
+members = ["crates/michem-core", "crates/michem-wasm"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+michem-core = { path = "crates/michem-core" }
+chitin-chem = { git = "https://github.com/chitin-dev/chitin", rev = "8c7357ff9755466f61c38d52641e74ed2feae352" }
+chitin-chemdraw = { git = "https://github.com/chitin-dev/chitin", rev = "8c7357ff9755466f61c38d52641e74ed2feae352" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+wasm-minimal-protocol = "0.2.1"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
