@@ -4,7 +4,7 @@
 #set text(font: "Libertinus Serif", size: 10pt)
 
 #let sample(mol, caption, style: (:), height: 3cm) = align(center)[
-  #block(height: height, width: 100%)[#align(center + horizon)[#michem.render(
+  #block(height: height, width: 100%)[#align(center + horizon)[#michem.smiles(
     mol,
     style: (font: "Libertinus Serif") + style,
   )]]
@@ -60,7 +60,7 @@ Chemical structures from SMILES and authored coordinates.
   ),
   bonds: (michem.bond("c1", "c2"), michem.bond("c2", "o")),
 )
-#michem.render(authored, style: michem.style(font: "Libertinus Serif"))
+#michem.smiles(authored, style: michem.style(font: "Libertinus Serif"))
 
 == Stereochemistry
 

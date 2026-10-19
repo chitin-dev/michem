@@ -10,7 +10,7 @@
 
 #for family in ("Libertinus Serif", "Liberation Sans", "Liberation Mono") [
   *#family*
-  #michem.render(mol, style: michem.style(font: family, bond-length: 40))
+  #michem.smiles(mol, style: michem.style(font: family, bond-length: 40))
   #parbreak()
 ]
 

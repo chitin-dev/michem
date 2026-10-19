@@ -17,18 +17,18 @@ Build the plugin with `bash scripts/build-plugin.sh`, then import `lib.typ`.
 
 ```typst
 #import "../lib.typ" as michem
-#michem.render("CC(=O)Oc1ccccc1C(=O)O", style: michem.style(font: "Libertinus Serif"))
+#michem.smiles("CC(=O)Oc1ccccc1C(=O)O", style: michem.style(font: "Libertinus Serif"))
 ```
 
-#align(center)[#michem.render(
+#align(center)[#michem.smiles(
   "CC(=O)Oc1ccccc1C(=O)O",
   style: michem.style(font: "Libertinus Serif"),
 )]
 
 == Molecular input
 
-`render`, `svg`, `diagram`, and `cetz.molecule` accept either a raw SMILES
-string, `smiles(value, positions: none)`, or `molecule(atoms: ..., bonds: ...)`.
+`smiles`, `svg`, `diagram`, and `cetz.molecule` accept either a raw SMILES
+string, `smiles-input(value, positions: none)`, or `molecule(atoms: ..., bonds: ...)`.
 
 `atom(id, element: "C", at: none, charge: 0, hydrogens: none,
 isotope: none, aromatic: false)` creates a named atom. Names must be unique,
@@ -91,14 +91,14 @@ SMILES text limit is 64 KiB.
 
 == Outputs
 
-`render(mol, style: (:), layout: (:), width: auto, height: auto)` produces Typst
+`smiles(mol, style: (:), layout: (:), width: auto, height: auto)` produces Typst
 content. `svg(mol, ...)` returns SVG bytes. `diagram(mol, ...)` returns a
 dictionary containing `svg`, `width`, `height`, `atoms`, and `diagnostics`. Each
 atom has an `id` and normalized `x`, `y` in the framed image, with origin at the
 bottom left. Layout diagnostics describe unresolved crowding, crossings, or work
 exhaustion. They are available to callers and are not automatically typeset.
 When selecting a named font, direct calls to `svg` and `diagram` require
-`context { ... }` for text measurement. `render` and CeTZ handle this automatically.
+`context { ... }` for text measurement. `smiles` and CeTZ handle this automatically.
 Named-font SVG exports reference fonts, so a standalone viewer needs the same
 font family. The default outlined SVG remains independent of viewer fonts.
 

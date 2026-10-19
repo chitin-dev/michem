@@ -2,7 +2,7 @@
 #let backend() = plugin("../wasm/michem.wasm")
 
 /// A SMILES molecule; optional coordinates cover all atoms in parse order.
-#let smiles(value, positions: none) = (
+#let smiles-input(value, positions: none) = (
   kind: "smiles",
   value: value,
   positions: positions,
@@ -68,7 +68,7 @@
 
 #let request(mol, style: (:), layout: (:)) = {
   let data = (
-    molecule: if type(mol) == str { smiles(mol) } else { mol },
+    molecule: if type(mol) == str { smiles-input(mol) } else { mol },
     style: style,
     layout: layout,
   )
@@ -130,7 +130,7 @@
 }
 
 /// Render a molecule as Typst content; SVG drawing units are pixels (0.75pt).
-#let render(mol, style: (:), layout: (:), width: auto, height: auto) = context {
+#let smiles(mol, style: (:), layout: (:), width: auto, height: auto) = context {
   image(
     svg(mol, style: style, layout: layout),
     format: "svg",
