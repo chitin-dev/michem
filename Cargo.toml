@@ -10,8 +10,8 @@ publish = false
 
 [workspace.dependencies]
 michem-core = { path = "crates/michem-core" }
-chitin-chem = { git = "https://github.com/chitin-dev/chitin", rev = "acf8c4706dc6e1520bbe3756ae92271873381173" }
-chitin-chemdraw = { git = "https://github.com/chitin-dev/chitin", rev = "acf8c4706dc6e1520bbe3756ae92271873381173" }
+chitin-chem = { git = "https://github.com/chitin-dev/chitin", rev = "0218417777caa2c3ae642fa6ab2a472a44df36ca" }
+chitin-chemdraw = { git = "https://github.com/chitin-dev/chitin", rev = "0218417777caa2c3ae642fa6ab2a472a44df36ca" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
