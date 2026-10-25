@@ -1,6 +1,7 @@
 //! Chitin-backed chemical drawing with a stable JSON boundary for Typst.
 
 mod host_font;
+pub mod mechanism;
 pub mod model;
 pub mod options;
 pub use host_font::{Label, Measurement};
@@ -14,6 +15,9 @@ use options::{Layout, Style};
 /// Invalid input or a failure in the chemical drawing pipeline.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+  /// Instance resolution or authored mechanism geometry is invalid.
+  #[error(transparent)]
+  Mechanism(#[from] chitin_chemdraw::diagram::DiagramError),
   /// A request violates the public input contract.
   #[error("{0}")]
   Input(String),
@@ -55,6 +59,13 @@ pub struct Request {
   /// Exact label metrics supplied by Typst for a named font.
   #[serde(default)]
   pub measurements: Vec<Measurement>,
+  /// Additional exact font-size requests needed by a positive instance scale.
+  #[serde(default = "unit_scale", rename = "measurement-scale")]
+  pub measurement_scale: f64,
+}
+
+fn unit_scale() -> f64 {
+  1.
 }
 
 /// A stable atom name and its normalized position within the framed SVG.
@@ -134,14 +145,30 @@ pub fn draw(request: &Request) -> Result<Diagram, Error> {
 
 /// Lists deduplicated label runs before Typst measures the requested font.
 pub fn label_requests(request: &Request) -> Result<Vec<Label>, Error> {
+  if !request.measurement_scale.is_finite() || request.measurement_scale <= 0. {
+    return Err(Error::Input(
+      "measurement scale must be finite and positive".into(),
+    ));
+  }
   let input = request.molecule.build(request.layout.max_atoms)?;
   let options = request.style.depict_options()?;
-  Ok(
+  let mut requests: std::collections::BTreeSet<_> =
     depict::measurement_requests(&input.graph, &options)?
+      .into_iter()
+      .collect();
+  for item in requests.clone() {
+    requests.insert(chitin_chemdraw::font::TextRequest::new(
+      item.content(),
+      item.font_size() * request.measurement_scale,
+    )?);
+  }
+  Ok(
+    requests
       .iter()
       .map(|item| host_font::Label {
         text: item.content().to_owned(),
         size: item.font_size(),
+        key: format!("{:016x}", item.font_size().to_bits()),
       })
       .collect(),
   )

@@ -162,7 +162,7 @@ impl Default for Style {
   }
 }
 
-fn color(value: &str) -> Result<Color, Error> {
+pub(crate) fn color(value: &str) -> Result<Color, Error> {
   let hex = value
     .strip_prefix('#')
     .filter(|hex| matches!(hex.len(), 6 | 8) && hex.bytes().all(|b| b.is_ascii_hexdigit()))

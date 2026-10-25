@@ -66,27 +66,42 @@
   options.named()
 }
 
-#let request(mol, style: (:), layout: (:)) = {
+/// Typography shared by measurement and native Typst mechanism labels.
+#let host-text(
+  family,
+  size,
+  body,
+  top-edge: "bounds",
+  bottom-edge: "bounds",
+  fill: black,
+) = text(
+  font: family,
+  size: size * 0.75pt,
+  style: "normal",
+  weight: "regular",
+  stretch: 100%,
+  kerning: false,
+  ligatures: false,
+  tracking: 0pt,
+  top-edge: top-edge,
+  bottom-edge: bottom-edge,
+  fill: fill,
+  body,
+)
+
+#let request(mol, style: (:), layout: (:), scale: 1) = {
   let data = (
     molecule: if type(mol) == str { smiles-input(mol) } else { mol },
     style: style,
     layout: layout,
+    "measurement-scale": scale,
   )
   let font = style.at("font", default: none)
   if font != none {
     assert(type(font) == str, message: "font must be a Typst font family name")
     let labels = json(backend().labels(bytes(json.encode(data))))
     let measurements = labels.map(label => {
-      let run = text.with(
-        font: font,
-        size: label.size * 0.75pt,
-        style: "normal",
-        weight: "regular",
-        stretch: 100%,
-        kerning: false,
-        ligatures: false,
-        tracking: 0pt,
-      )
+      let run = host-text.with(font, label.size)
       let advance = measure(run(label.text)).width / 0.75pt
       let ascent = (
         measure(run(
@@ -107,6 +122,7 @@
       (
         text: label.text,
         size: label.size,
+        key: label.key,
         advance: advance,
         min: (0, -ascent),
         max: (advance, descent),

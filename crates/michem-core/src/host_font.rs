@@ -17,6 +17,8 @@ pub struct Label {
   pub text: String,
   /// Font size in SVG drawing units.
   pub size: f64,
+  /// Opaque exact size token; hosts return it unchanged across numeric codecs.
+  pub key: String,
 }
 
 /// Host-measured advance and baseline-relative ink bounds, in SVG units.
@@ -27,6 +29,9 @@ pub struct Measurement {
   pub text: String,
   /// Exact requested font size.
   pub size: f64,
+  /// Exact request token. Absent accepts legacy numeric-only measurements.
+  #[serde(default)]
+  pub key: Option<String>,
   /// Horizontal advance.
   pub advance: f64,
   /// Minimum x and y in a y-down baseline coordinate frame.
@@ -39,8 +44,28 @@ pub(crate) fn face(family: &str, rows: &[Measurement]) -> Result<FontFace, Error
   let entries = rows
     .iter()
     .map(|row| {
+      let size = match &row.key {
+        Some(key) => {
+          let bits = u64::from_str_radix(key, 16)
+            .map_err(|_| Error::Input("invalid font measurement token".into()))?;
+          let size = f64::from_bits(bits);
+          if key.len() != 16
+            || !size.is_finite()
+            || size <= 0.
+            || !row.size.is_finite()
+            || row.size <= 0.
+            || size.to_bits().abs_diff(row.size.to_bits()) > 4
+          {
+            return Err(Error::Input(
+              "font measurement token does not match its numeric size".into(),
+            ));
+          }
+          size
+        }
+        None => row.size,
+      };
       Ok((
-        TextRequest::new(&row.text, row.size)?,
+        TextRequest::new(&row.text, size)?,
         TextMetrics {
           advance: row.advance,
           min: Point::new(row.min[0], row.min[1]),
@@ -48,7 +73,7 @@ pub(crate) fn face(family: &str, rows: &[Measurement]) -> Result<FontFace, Error
         },
       ))
     })
-    .collect::<Result<Vec<_>, chitin_chemdraw::font::FontError>>()?;
+    .collect::<Result<Vec<_>, Error>>()?;
   Ok(FontFace::from_measurements(family, entries)?)
 }
 

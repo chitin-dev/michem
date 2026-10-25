@@ -11,3 +11,8 @@
 #let layout = chemical.layout
 #let diagram = chemical.diagram
 #let svg = chemical.svg
+
+#import "typst/mechanism.typ": (
+  atom-ref, bond-ref, edge, electron-arrow, highlight, lone-pair, mechanism,
+  mechanism-data, mechanism-label, mol, paint-mechanism, reaction-arrow,
+)

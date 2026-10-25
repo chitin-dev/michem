@@ -104,7 +104,51 @@ When selecting a named font, direct calls to `svg` and `diagram` require
 Named-font SVG exports reference fonts, so a standalone viewer needs the same
 font family. The default outlined SVG remains independent of viewer fonts.
 
-== CeTZ integration
+== Authored mechanisms
+
+`mechanism(..items, font: none, gap: 24pt, padding: 6pt, label-gap: 4pt)`
+composes named molecular occurrences, fragment highlights, electron-flow arrows,
+and reaction connectors without requiring CeTZ. See `examples/mechanism.typ`.
+It draws the supplied mechanism; it does not predict a reaction.
+
+- `mol(id, input, at: none, offset: (0pt, 0pt), scale: 1, style: (:), layout: (:))`
+  creates a unique occurrence. With no `at`, measured bounds are packed in a row.
+  Explicit `at` translates the local molecular origin, not the image corner.
+- `atom-ref(id, atom, offset: (0, 0))` and `bond-ref(id, a, b, offset: (0, 0))`
+  address original input atom names or zero-based SMILES indices. Offsets are
+  local SVG pixels and follow the occurrence scale.
+- `highlight(id, atoms: (), bonds: (), radius: 4, color: ...)` shades a fragment.
+  Bonds are endpoint pairs; one request applies opacity once to its union.
+- `electron-arrow(from, to, bend: 30, head: "pair", style: (:))` draws authored
+  electron flow. Heads also support `"fishhook-left"` and `"fishhook-right"`.
+- `lone-pair(reference, angle: 0deg, separation: 3, radius: 0.7, color: red)`
+  places explicit electron dots without inferring valence.
+- `reaction-arrow(from, to, equilibrium: false, above: none, below: none, style: (:))`
+  adds a reaction connector and arbitrary Typst conditions. Endpoints accept
+  coordinates or `edge(id, side: "east", gap: 3pt)` references to measured bounds.
+- `mechanism-label(at, body)` adds centered native Typst content.
+
+Coordinates accept physical lengths or SVG pixels, with x right and y down.
+Arrow bend and style dimensions are shared SVG pixels; the arrow style accepts
+`color`, `width`, `head-length`, `head-width`, and `clearance`. Molecular input
+coordinates remain normalized y-up bond units. Reflections, automatic arrow
+routing, and reaction inference are not performed.
+
+`mechanism-data(..items, ...)` is available inside `context` for inspection; its
+`scene.molecules` contains absolute named atom and bond anchors. Pass the result
+to `paint-mechanism(data, padding: 6pt)` to draw it. Preparation freezes all atom
+coordinates before final composition. Wire version 1 never exposes internal
+graph handles. Named-font runs are measured and painted by Typst, interleaved
+with vector layers in painter order; opaque size tokens survive numeric codecs.
+Standalone molecule SVG framing options do not frame the shared mechanism.
+
+For local development against an unpublished Chitin checkout, run
+`CHITIN_SOURCE=/path/to/chitin bash scripts/build-plugin.sh`, or set the same
+environment variable when running `just mechanism`. This uses a local Cargo
+override without modifying the pinned remote revision. Publish and pin the
+matching Chitin changes before using a normal release build.
+
+== CeTZ canvas
 
 Inside `cetz.canvas`, call `michem.cetz.molecule(mol, at: (0, 0), name: none,
 scale: 1, unit: 0.75pt, style: (:), layout: (:))`. The molecule is embedded as

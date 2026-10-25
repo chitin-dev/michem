@@ -10,3 +10,6 @@ docs: build
 
 gallery: build
     typst compile --root . examples/gallery.typ examples/gallery.pdf
+
+mechanism: build
+    typst compile --root . examples/mechanism.typ examples/mechanism.pdf
