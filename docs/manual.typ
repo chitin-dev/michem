@@ -83,8 +83,10 @@ Document `set text` rules do not override the molecule font.
 
 Pass `layout: michem.layout(...)`. Supported options are `max-atoms` (default
 512), `component-gap`, `minimum-spacing`, `refinement-passes`,
-`ring-search-budget`, `refinement-budget`, `backbone-budget`, `stereo-budget`,
-`optimization-iterations`, and `optimization-budget`. Defaults other than
+`refinement-budget`, `stereo-budget`, and `work-budget`. The shared `work-budget`
+bounds native topology, ring construction, search and simulation. It replaces
+the former `ring-search-budget`, `backbone-budget`, `optimization-iterations`,
+and `optimization-budget` options. Defaults other than
 max-atoms follow the pinned Chitin version. Authored coordinates bypass
 automatic layout but retain the atom limit. The request limit is 4 MiB and the
 SMILES text limit is 64 KiB.

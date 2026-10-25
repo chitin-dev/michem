@@ -20,18 +20,12 @@ pub struct Layout {
   pub minimum_spacing: f64,
   /// Discrete overlap refinement passes.
   pub refinement_passes: usize,
-  /// Shared work for ring discovery and embedding.
-  pub ring_search_budget: usize,
   /// Shared work for optional overlap refinement.
   pub refinement_budget: usize,
-  /// Shared work for long-chain routing.
-  pub backbone_budget: usize,
   /// Shared work for double-bond stereochemistry.
   pub stereo_budget: usize,
-  /// Continuous optimization iteration limit.
-  pub optimization_iterations: usize,
-  /// Continuous optimization work allowance.
-  pub optimization_budget: usize,
+  /// Shared work for native topology, ring construction, search and simulation.
+  pub work_budget: usize,
 }
 
 impl Default for Layout {
@@ -42,12 +36,9 @@ impl Default for Layout {
       component_gap: base.component_gap,
       minimum_spacing: base.minimum_spacing,
       refinement_passes: base.refinement_passes,
-      ring_search_budget: base.ring_search_budget,
       refinement_budget: base.refinement_budget,
-      backbone_budget: base.backbone_budget,
       stereo_budget: base.stereo_budget,
-      optimization_iterations: base.optimization.iterations,
-      optimization_budget: base.optimization.work_budget,
+      work_budget: base.work_budget,
     }
   }
 }
@@ -59,16 +50,9 @@ impl Layout {
       component_gap: self.component_gap,
       minimum_spacing: self.minimum_spacing,
       refinement_passes: self.refinement_passes,
-      ring_search_budget: self.ring_search_budget,
       refinement_budget: self.refinement_budget,
-      backbone_budget: self.backbone_budget,
       stereo_budget: self.stereo_budget,
-      optimization: layout::optimization::OptimizationOptions {
-        iterations: self.optimization_iterations,
-        work_budget: self.optimization_budget,
-        max_atoms: self.max_atoms,
-        ..Default::default()
-      },
+      work_budget: self.work_budget,
     }
   }
 }
