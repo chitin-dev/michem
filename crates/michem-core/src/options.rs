@@ -101,10 +101,22 @@ pub enum ChiralHydrogens {
   Explicit,
 }
 
+/// Formal-charge enclosure, independent of atom chemistry.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChargeStyle {
+  /// Ordinary charge superscript.
+  Plain,
+  /// Measured superscript enclosed by a vector circle.
+  Circled,
+}
+
 /// Drawing dimensions are SVG pixels; colors are #RRGGBB or #RRGGBBAA.
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Style {
+  /// Enclosure of formal charges: `plain` or `circled`.
+  pub charge_style: ChargeStyle,
   /// Font family resolved by Typst; absent retains Chitin's outlined default.
   pub font: Option<String>,
   /// Drawing units per normalized bond; dependent sizes scale with this value.
@@ -142,6 +154,7 @@ pub struct Style {
 impl Default for Style {
   fn default() -> Self {
     Self {
+      charge_style: ChargeStyle::Plain,
       font: None,
       bond_length: 24.,
       font_size: None,
@@ -209,6 +222,10 @@ impl Style {
       bond_color_style: match self.bond_colors {
         BondColors::Split => depict::BondColorStyle::Split,
         BondColors::Uniform => depict::BondColorStyle::Uniform,
+      },
+      charge_style: match self.charge_style {
+        ChargeStyle::Plain => depict::ChargeStyle::Plain,
+        ChargeStyle::Circled => depict::ChargeStyle::Circled,
       },
       aromatic_style: match self.aromatic {
         Aromatic::Kekule => depict::AromaticStyle::Kekule,

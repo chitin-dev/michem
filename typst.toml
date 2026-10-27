@@ -7,4 +7,4 @@ description = "Chemical structures and reaction diagrams powered by Chitin and C
 compiler = "0.14.0"
 keywords = ["chemistry", "smiles", "molecule", "reaction", "wasm"]
 categories = ["visualization"]
-exclude = ["crates/**", "target/**", "scripts/**", "examples/**", "docs/**", "Cargo.toml", "Cargo.lock", "justfile", "rustfmt.toml", ".gitignore", ".github/**"]
+exclude = ["crates/**", "target/**", "scripts/**", "examples/**", "docs/**", "tests/**", "Cargo.toml", "Cargo.lock", "justfile", "rustfmt.toml", ".gitignore", ".github/**", ".cargo/**", ".temp/**"]

@@ -112,27 +112,90 @@ and reaction connectors without requiring CeTZ. See `examples/mechanism.typ`.
 It draws the supplied mechanism; it does not predict a reaction.
 
 - `mol(id, input, at: none, offset: (0pt, 0pt), scale: 1, style: (:), layout: (:))`
-  creates a unique occurrence. With no `at`, measured bounds are packed in a row.
+  creates a unique occurrence. With no `at`, measured bounds follow the selected arrangement.
   Explicit `at` translates the local molecular origin, not the image corner.
+- `near(id, side: "south", gap: 18pt, align: "center", atom: none)` can be passed as `at`.
+  It places an occurrence outside an earlier occurrence's measured bounds.
+  Sides are north, south, east and west; cross-axis alignment is start, center or end.
+  Set `atom` to a manual atom name or zero-based SMILES index to position beside
+  that atom instead of the full occurrence bounds, for example near an α-H.
 - `atom-ref(id, atom, offset: (0, 0))` and `bond-ref(id, a, b, offset: (0, 0))`
   address original input atom names or zero-based SMILES indices. Offsets are
   local SVG pixels and follow the occurrence scale.
 - `highlight(id, atoms: (), bonds: (), radius: 4, color: ...)` shades a fragment.
   Bonds are endpoint pairs; one request applies opacity once to its union.
-- `electron-arrow(from, to, bend: 30, head: "pair", style: (:))` draws authored
+- `electron-arrow(from, to, curve: "arc", arc-angle: 90deg, head: "pair", style: (:), route: "manual", routing: (:))` draws authored
   electron flow. Heads also support `"fishhook-left"` and `"fishhook-right"`.
-- `lone-pair(reference, angle: 0deg, separation: 3, radius: 0.7, color: red)`
-  places explicit electron dots without inferring valence.
+  Circular arcs are the default. `arc-angle` is the signed central sweep, with
+  magnitude 1 to 180 degrees; positive sweeps turn clockwise in y-down coordinates.
+  Endpoint trimming follows the same circle and the arrowhead follows its tangent.
+  Use `curve: "bezier"` explicitly for `bend: 30` or endpoint-relative `controls`.
+  Arc mode ignores `bend` and rejects Bezier controls.
+  `route: "auto"` searches clear curves against molecular ink, other fixed arrows,
+  prior routed arrows, and measured conditions/notes. The chemical endpoints stay fixed.
+- `lone-pair(reference, angle: 0deg, separation: 3, radius: 0.7, color: red,
+  id: none, position: "manual", placement: (:))` places an explicitly requested pair.
+  `position: "auto"` suggests its visual offset and dot orientation around molecular
+  ink, reaction connectors, measured notes and earlier pairs. It does not infer valence
+  or how many pairs exist. `pair-ref(molecule, id)` attaches an electron arrow to the
+  exact resolved pair position, including automatically selected offsets.
 - `reaction-arrow(from, to, equilibrium: false, above: none, below: none, style: (:))`
   adds a reaction connector and arbitrary Typst conditions. Endpoints accept
   coordinates or `edge(id, side: "east", gap: 3pt)` references to measured bounds.
 - `mechanism-label(at, body)` adds centered native Typst content.
 
 Coordinates accept physical lengths or SVG pixels, with x right and y down.
-Arrow bend and style dimensions are shared SVG pixels; the arrow style accepts
+Bezier bend and style dimensions are shared SVG pixels; the arrow style accepts
 `color`, `width`, `head-length`, `head-width`, and `clearance`. Molecular input
-coordinates remain normalized y-up bond units. Reflections, automatic arrow
-routing, and reaction inference are not performed.
+coordinates remain normalized y-up bond units. Reflections and reaction inference
+are not performed.
+
+=== Layout and panels
+
+`mechanism` and `mechanism-data` accept `arrangement: "row"`, `"column"`, or
+`"grid"`, with `columns: 2`, `gap: 24pt`, `row-gap: 36pt` and `arrow-space: 0pt`.
+Grid cells use the widest measured molecule per column and tallest per row;
+`arrow-space` adds space on both sides of each inter-cell gap. Explicit and `near`
+placements are outside the automatic grid, so callers remain responsible for their
+relationship to automatic cells. Declarations referenced by `near` must appear earlier.
+
+`mechanism-panels(..panels, columns: 2, gutter: 18pt)` arranges independently
+rendered mechanism blocks with separate routing domains. Use local reacting-species
+panels and separate product/byproduct panels to keep electron arrows local.
+See `examples/mechanism-layout.typ` for measured grids, relative placement and
+routing around a native Typst label.
+
+=== Bounded routing and suggestions
+
+Arrow `routing` settings are `margin` (2), `max-bend` (192), `bend-step` (12),
+`max-candidates` (65, at most 129), and `work-budget` (1,000,000).
+These dimensions are shared SVG pixels and the bend limits apply to Bezier curves.
+Arc routing tries the authored sweep, its reverse and signed sweeps at 30-degree
+intervals up to a semicircle. Every arc candidate remains an exact circle.
+Bezier routing tries the preferred bend when inside the allowed range, then straight
+and progressively larger bends on both sides. Search is conservative, sequential
+and limited to one circular arc or cubic curve;
+it does not promise to find every possible path or globally rearrange molecules.
+Highlights are excluded from collision checks. Atom attachments may consume the
+extra spacing around their own labels, but never cross glyph ink. Local contact
+with incident bonds is allowed, while the rest of the curve clears ink.
+Automatic arrows are resolved after fixed annotations and painted last.
+
+Pair `placement` settings are `preferred-angle` (0deg), `min-distance` (8),
+`max-distance` (48), `distance-step` (4), `directions` (16, at most 64),
+`margin` (2), `max-candidates` (256, at most 1024), and `work-budget` (1,000,000).
+Distances are local SVG pixels and follow molecule scale. The helper tries increasing
+radii and directions around the explicitly selected attachment; it conservatively
+treats ink envelopes as obstacles. Explicit manual electron arrows are not rerouted
+when a pair is suggested. Automatic arrows then account for resolved pairs.
+
+One mechanism shares a ceiling of 16 million search comparisons across automatic
+pairs and arrows. A blocked route or exhausted search returns an explicit error;
+increase spacing, change placement or adjust search limits. Manual placement and
+manual curve parameters preserve the authored geometry. Successful decisions are available in
+`scene.routing` and `scene.lone_pairs` from `mechanism-data`.
+Its `placements` field contains the measured occurrence envelopes and final
+origins for host-side inspection.
 
 `mechanism-data(..items, ...)` is available inside `context` for inspection; its
 `scene.molecules` contains absolute named atom and bond anchors. Pass the result

@@ -5,6 +5,80 @@ use serde_json::{Value, json};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+#[test]
+fn automatic_arc_routes_should_report_the_selected_path_and_honor_preference() -> TestResult {
+  for (prefer, expected) in [("minor", "minor"), ("major", "major")] {
+    let mut b = instance("b", "C");
+    b["placement"] = json!({"origin":[180,0]});
+    let mut value = prepare(json!({"version":1,"molecules":[instance("a","C"),b]}))?;
+    value["annotations"] = json!([{"type":"electron-arrow","curve":"arc","arc-angle":90,
+      "arc-path":"auto","arc-prefer":prefer,"route":"auto",
+      "from":{"molecule":"a","target":{"kind":"atom","atom":"0"},"offset":[0,40]},
+      "to":{"molecule":"b","target":{"kind":"atom","atom":"0"},"offset":[0,40]}}]);
+    let scene = mechanism::compose(&mechanism::decode(&serde_json::to_vec(&value)?)?)?;
+    assert_eq!(scene.routing[0].arc_path, Some(expected));
+    value["annotations"][0]["arc-path"] = json!("unknown");
+    assert!(mechanism::decode(&serde_json::to_vec(&value)?).is_err());
+  }
+  Ok(())
+}
+
+#[test]
+fn default_arc_routes_should_preserve_native_geometry_and_report_selected_sweeps() -> TestResult {
+  let mut b = instance("b", "C");
+  b["placement"] = json!({"origin":[180,0]});
+  let mut value = prepare(json!({"version":1,"molecules":[instance("a","C"),b]}))?;
+  value["obstacles"] = json!([{"min":[65,-60],"max":[115,-5]}]);
+  value["annotations"] = json!([{"type":"electron-arrow","arc-angle":90,"route":"auto",
+    "from":{"molecule":"a","target":{"kind":"atom","atom":"0"}},
+    "to":{"molecule":"b","target":{"kind":"atom","atom":"0"}}}]);
+  let scene = mechanism::compose(&mechanism::decode(&serde_json::to_vec(&value)?)?)?;
+  assert!(scene.routing[0].arc_angle.is_some_and(|a| a < 0.));
+  assert!(
+    scene
+      .layers
+      .iter()
+      .any(|l| matches!(l, Layer::Vector { svg, .. } if svg.contains(" A")))
+  );
+  value["annotations"][0]["controls"] = json!([[20, 30], [-20, 30]]);
+  assert!(mechanism::compose(&mechanism::decode(&serde_json::to_vec(&value)?)?).is_err());
+  value["annotations"][0]
+    .as_object_mut()
+    .ok_or("annotation")?
+    .remove("controls");
+  value["annotations"][0]["arc-angle"] = json!(0);
+  assert!(mechanism::compose(&mechanism::decode(&serde_json::to_vec(&value)?)?).is_err());
+  Ok(())
+}
+
+#[test]
+fn explicit_controls_circled_charges_and_reactive_sites_should_compose() -> TestResult {
+  let mut a = instance("a", "[OH-]");
+  a["drawing"]["style"] = json!({"charge-style":"circled"});
+  let mut b = instance("b", "[H+]");
+  b["drawing"]["style"] = json!({"charge-style":"circled"});
+  b["placement"] = json!({"origin":[180,0]});
+  let mut value = prepare(json!({"version":1,"molecules":[a,b]}))?;
+  value["annotations"] = json!([
+    {"type":"electron-dot","anchor":{"molecule":"a","target":{"kind":"radical","atom":"0"},"offset":[15,12]},"radius":0.7,"color":"#000000"},
+    {"type":"electron-arrow","curve":"bezier","from":{"molecule":"a","target":{"kind":"radical","atom":"0"},"offset":[15,12]},"to":{"molecule":"a","target":{"kind":"bond-formation","atom":"0","other_molecule":"b","other_atom":"0"}},"bend":0,"controls":[[25,30],[-10,30]],"head":"fishhook-left"}
+  ]);
+  let drawing = mechanism::compose(&mechanism::decode(&serde_json::to_vec(&value)?)?)?;
+  let svg = drawing
+    .layers
+    .iter()
+    .filter_map(|l| match l {
+      Layer::Vector { svg, .. } => Some(svg.as_str()),
+      _ => None,
+    })
+    .collect::<String>();
+  assert!(svg.matches("<circle").count() >= 3);
+  assert!(svg.contains(" C"));
+  value["annotations"][1]["to"]["target"]["other_molecule"] = json!("unknown");
+  assert!(mechanism::compose(&mechanism::decode(&serde_json::to_vec(&value)?)?).is_err());
+  Ok(())
+}
+
 fn instance(id: &str, smiles: &str) -> Value {
   json!({"id":id,"drawing":{"molecule":{"kind":"smiles","value":smiles}}})
 }
@@ -189,5 +263,88 @@ fn repeated_stateless_composition_should_not_serialize_new_graph_namespaces() ->
   let a = serde_json::to_string(&mechanism::compose(&request)?)?;
   let b = serde_json::to_string(&mechanism::compose(&request)?)?;
   assert_eq!(a, b);
+  Ok(())
+}
+
+#[test]
+fn automatic_routes_should_detour_around_reserved_host_labels() -> TestResult {
+  let mut a = instance("a", "C");
+  let mut b = instance("b", "C");
+  a["placement"] = json!({"origin":[0,0]});
+  b["placement"] = json!({"origin":[180,0]});
+  let mut value = prepare(json!({"version":1,"molecules":[a,b]}))?;
+  value["obstacles"] = json!([{"min":[70,-20],"max":[110,20]}]);
+  value["annotations"] = json!([{"type":"electron-arrow","curve":"bezier","route":"auto","bend":0,
+    "from":{"molecule":"a","target":{"kind":"atom","atom":"0"}},
+    "to":{"molecule":"b","target":{"kind":"atom","atom":"0"}}}]);
+  let scene = mechanism::compose(&mechanism::decode(&serde_json::to_vec(&value)?)?)?;
+  assert_eq!(scene.routing.len(), 1);
+  assert_ne!(scene.routing[0].bend, 0.);
+  assert_eq!(scene.routing[0].annotation, 0);
+  Ok(())
+}
+
+#[test]
+fn unrouteable_auto_arrows_should_fail_explicitly_instead_of_returning_overlap() -> TestResult {
+  let mut b = instance("b", "C");
+  b["placement"] = json!({"origin":[180,0]});
+  let mut value = prepare(json!({"version":1,"molecules":[instance("a","C"),b]}))?;
+  value["obstacles"] = json!([{"min":[-1000,-1000],"max":[1000,1000]}]);
+  value["annotations"] = json!([{"type":"electron-arrow","route":"auto","bend":0,
+    "from":{"molecule":"a","target":{"kind":"atom","atom":"0"}},
+    "to":{"molecule":"b","target":{"kind":"atom","atom":"0"}}}]);
+  let Err(error) = mechanism::compose(&mechanism::decode(&serde_json::to_vec(&value)?)?) else {
+    return Err("blocked route should fail".into());
+  };
+  assert!(error.to_string().contains("no clear electron-arrow route"));
+  Ok(())
+}
+
+#[test]
+fn manual_curves_should_preserve_the_authored_bend_even_when_obstructed() -> TestResult {
+  let mut b = instance("b", "C");
+  b["placement"] = json!({"origin":[180,0]});
+  let mut value = prepare(json!({"version":1,"molecules":[instance("a","C"),b]}))?;
+  value["obstacles"] = json!([{"min":[70,-20],"max":[110,20]}]);
+  value["annotations"] = json!([{"type":"electron-arrow","curve":"bezier","bend":0,
+    "from":{"molecule":"a","target":{"kind":"atom","atom":"0"}},
+    "to":{"molecule":"b","target":{"kind":"atom","atom":"0"}}}]);
+  let scene = mechanism::compose(&mechanism::decode(&serde_json::to_vec(&value)?)?)?;
+  assert!(scene.routing.is_empty());
+  Ok(())
+}
+
+#[test]
+fn auto_pair_references_should_follow_the_selected_position_in_stateless_requests() -> TestResult {
+  let mut b = instance("b", "[CH3+]");
+  b["placement"] = json!({"origin":[180,0]});
+  let mut value = prepare(json!({"version":1,"molecules":[instance("a","[OH-]"),b]}))?;
+  value["annotations"] = json!([
+    {"type":"lone-pair","id":"donor","position":"auto","anchor":{"molecule":"a","target":{"kind":"atom","atom":"0"}},"angle":0,"separation":3,"radius":0.7,"color":"#000000"},
+    {"type":"electron-arrow","curve":"bezier","route":"auto","bend":25,"from":{"molecule":"a","target":{"kind":"lone-pair","pair":"donor"}},"to":{"molecule":"b","target":{"kind":"atom","atom":"0"}}}
+  ]);
+  let request = mechanism::decode(&serde_json::to_vec(&value)?)?;
+  let scene = mechanism::compose(&request)?;
+  assert_eq!(scene.lone_pairs.len(), 1);
+  assert_ne!(scene.lone_pairs[0].offset, [0., 0.]);
+  assert_eq!(scene.routing.len(), 1);
+  assert_eq!(
+    serde_json::to_string(&scene)?,
+    serde_json::to_string(&mechanism::compose(&request)?)?
+  );
+  Ok(())
+}
+
+#[test]
+fn pair_references_should_reject_unknown_and_duplicate_ids() -> TestResult {
+  let mut value = prepare(json!({"version":1,"molecules":[instance("a","[OH-]")]}))?;
+  let pair = json!({"type":"lone-pair","id":"donor","anchor":{"molecule":"a","target":{"kind":"atom","atom":"0"},"offset":[15,0]},"angle":0,"separation":3,"radius":0.7,"color":"#000000"});
+  value["annotations"] = json!([pair, pair]);
+  assert!(mechanism::compose(&mechanism::decode(&serde_json::to_vec(&value)?)?).is_err());
+  value["annotations"] = json!([{"type":"electron-arrow","bend":30,"from":{"molecule":"a","target":{"kind":"lone-pair","pair":"missing"}},"to":{"molecule":"a","target":{"kind":"atom","atom":"0"}}}]);
+  let Err(error) = mechanism::compose(&mechanism::decode(&serde_json::to_vec(&value)?)?) else {
+    return Err("missing pair should fail".into());
+  };
+  assert!(error.to_string().contains("unknown lone pair"));
   Ok(())
 }

@@ -13,6 +13,8 @@
 #let svg = chemical.svg
 
 #import "typst/mechanism.typ": (
-  atom-ref, bond-ref, edge, electron-arrow, highlight, lone-pair, mechanism,
-  mechanism-data, mechanism-label, mol, paint-mechanism, reaction-arrow,
+  atom-ref, bond-ref, edge, electron-arrow, electron-dot, formation-ref,
+  highlight, lone-pair, mechanism, mechanism-data, mechanism-label,
+  mechanism-panels, mol, near, paint-mechanism, pair-ref, radical-ref,
+  reaction-arrow,
 )

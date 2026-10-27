@@ -41,11 +41,15 @@
   ),
   michem.mol("product", "CC(C)O.[I-]", at: (210pt, 25pt)),
   michem.lone-pair(pair),
-  michem.electron-arrow(pair, michem.atom-ref("substrate", 1), bend: 25),
+  michem.electron-arrow(
+    pair,
+    michem.atom-ref("substrate", 1),
+    arc-angle: -90deg,
+  ),
   michem.electron-arrow(
     michem.bond-ref("substrate", 1, 3),
     michem.atom-ref("substrate", 3),
-    bend: -22,
+    arc-angle: 90deg,
   ),
   michem.reaction-arrow(
     (110pt, 25pt),
@@ -58,7 +62,7 @@
 
 #v(16pt)
 
-// Measured automatic packing, an equilibrium connector, and a second font.
+// Measured automatic packing and an equilibrium connector.
 #michem.mechanism(
   michem.mol("acid", "CC(=O)O"),
   michem.mol("base", "CC(=O)[O-]", scale: 1.25),
@@ -68,5 +72,5 @@
     equilibrium: true,
     above: [−H⁺],
   ),
-  font: "Libertinus Sans",
+  font: "Libertinus Serif",
 )

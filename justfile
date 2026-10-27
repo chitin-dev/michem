@@ -3,7 +3,7 @@ build:
 
 fmt:
     cargo fmt --all
-    typstyle --inplace --indent-width 2 lib.typ typst/*.typ examples/*.typ docs/*.typ
+    typstyle --inplace --indent-width 2 lib.typ typst/*.typ examples/*.typ docs/*.typ tests/*.typ
 
 docs: build
     typst compile --root . docs/manual.typ docs/manual.pdf
@@ -13,3 +13,6 @@ gallery: build
 
 mechanism: build
     typst compile --root . examples/mechanism.typ examples/mechanism.pdf
+
+mechanism-layout: build
+    typst compile --root . examples/mechanism-layout.typ examples/mechanism-layout.pdf

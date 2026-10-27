@@ -49,12 +49,154 @@ pub struct Request {
   /// Authored annotations; ignored during preparation but validated on composition.
   #[serde(default)]
   pub annotations: Vec<Annotation>,
+  /// Measured host text boxes reserved for routing, in shared diagram coordinates.
+  #[serde(default)]
+  pub obstacles: Vec<Envelope>,
+}
+
+/// Electron-arrow placement policy; authored curves remain the default.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Route {
+  /// Preserve the authored curve parameters exactly.
+  #[default]
+  Manual,
+  /// Search both sides while preserving the chemical endpoints.
+  Auto,
+}
+
+/// Authored electron-arrow geometry, independent of electron count.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Curve {
+  /// Explicit bend or endpoint-local Bezier controls.
+  Bezier,
+  /// Exact circular arc with a signed central angle; the default geometry.
+  #[default]
+  Arc,
+}
+
+/// Path selection on the circle defined by the authored minor sweep.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArcPath {
+  /// Preserve the minor path without complementary fallback.
+  Minor,
+  /// Preserve the complementary major path.
+  Major,
+  /// Consider readability and then the configured preference.
+  #[default]
+  Auto,
+}
+
+/// Tie-break preference between readable paths in automatic mode.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArcPreference {
+  /// Prefer the compact minor path.
+  #[default]
+  Minor,
+  /// Prefer the complementary major path.
+  Major,
+}
+
+impl ArcPath {
+  /// Converts path policy without changing the caller's minor angle.
+  pub(super) fn policy(&self, prefer: &ArcPreference) -> chitin_chemdraw::diagram::ArcPath {
+    use chitin_chemdraw::diagram::ArcPath as Core;
+    match (self, prefer) {
+      (Self::Minor, _) => Core::Minor,
+      (Self::Major, _) => Core::Major,
+      (Self::Auto, ArcPreference::Minor) => Core::PreferMinor,
+      (Self::Auto, ArcPreference::Major) => Core::PreferMajor,
+    }
+  }
+}
+
+/// Default quarter-circle sweep, in wire degrees.
+fn arc_angle() -> f64 {
+  90.
+}
+
+/// Finite resource and clearance settings for automatic arrow routing.
+#[derive(Debug, Deserialize)]
+#[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
+pub struct Routing {
+  /// Clearance beyond the arrow's ink width.
+  pub margin: f64,
+  /// Largest absolute candidate bend in shared SVG units.
+  pub max_bend: f64,
+  /// Difference between successive candidate bend magnitudes.
+  pub bend_step: f64,
+  /// Maximum curves to evaluate.
+  pub max_candidates: usize,
+  /// Maximum obstacle comparisons for one arrow.
+  pub work_budget: usize,
+}
+
+impl Default for Routing {
+  fn default() -> Self {
+    let base = chitin_chemdraw::diagram::RoutingOptions::default();
+    Self {
+      margin: base.margin,
+      max_bend: base.max_bend,
+      bend_step: base.bend_step,
+      max_candidates: base.max_candidates,
+      work_budget: base.work_budget,
+    }
+  }
+}
+
+impl Routing {
+  pub(super) fn options(&self) -> chitin_chemdraw::diagram::RoutingOptions {
+    chitin_chemdraw::diagram::RoutingOptions {
+      margin: self.margin,
+      max_bend: self.max_bend,
+      bend_step: self.bend_step,
+      max_candidates: self.max_candidates,
+      work_budget: self.work_budget,
+    }
+  }
+}
+
+/// Successful automatic routing decision, indexed by original annotation order.
+#[derive(Debug, Serialize)]
+pub struct RoutedArrow {
+  /// Selected explicit path; absent for Bezier curves. The angle remains the
+  /// authored minor-circle parameter, so it can be replayed with this path.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub arc_path: Option<&'static str>,
+  /// Selected central sweep in degrees for an arc; absent for Bezier curves.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub arc_angle: Option<f64>,
+  /// Index of the annotation in the JSON request.
+  pub annotation: usize,
+  /// Selected signed perpendicular control displacement.
+  pub bend: f64,
+  /// Complete candidates evaluated before finding this clear curve.
+  pub evaluated: usize,
+  /// Segment/obstacle comparisons used.
+  pub work_used: usize,
 }
 
 /// A named atom or bond; bond endpoints may be given in either order.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Target {
+  /// Explicit single-electron position relative to a source atom.
+  Radical {
+    /// Atom name or parse index.
+    atom: String,
+  },
+  /// Midpoint between reacting atoms; no existing bond is required.
+  BondFormation {
+    /// Atom name in this occurrence.
+    atom: String,
+    /// Occurrence containing the other reacting atom.
+    other_molecule: String,
+    /// Atom name in the other occurrence.
+    other_atom: String,
+  },
   /// Atom name or zero-based SMILES parse index as a string.
   Atom {
     /// Input atom name.
@@ -67,6 +209,79 @@ pub enum Target {
     /// Second input atom name.
     to: String,
   },
+  /// A named explicitly authored lone pair on the same occurrence.
+  LonePair {
+    /// Lone-pair ID supplied in this request.
+    pair: String,
+  },
+}
+
+/// Geometric search settings for an explicitly requested lone pair.
+#[derive(Debug, Deserialize)]
+#[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
+pub struct PairPlacement {
+  /// Preferred radial direction in radians, in y-down axes.
+  pub preferred_angle: f64,
+  /// Minimum local atom-center distance.
+  pub min_distance: f64,
+  /// Maximum local atom-center distance.
+  pub max_distance: f64,
+  /// Local distance increment.
+  pub distance_step: f64,
+  /// Number of angular candidates per distance.
+  pub directions: usize,
+  /// Local space outside each dot.
+  pub margin: f64,
+  /// Maximum complete positions to check.
+  pub max_candidates: usize,
+  /// Maximum dot/obstacle comparisons.
+  pub work_budget: usize,
+}
+
+impl Default for PairPlacement {
+  fn default() -> Self {
+    let o = chitin_chemdraw::diagram::LonePairOptions::default();
+    Self {
+      preferred_angle: o.preferred_angle,
+      min_distance: o.min_distance,
+      max_distance: o.max_distance,
+      distance_step: o.distance_step,
+      directions: o.directions,
+      margin: o.margin,
+      max_candidates: o.max_candidates,
+      work_budget: o.work_budget,
+    }
+  }
+}
+
+impl PairPlacement {
+  pub(super) fn options(&self) -> chitin_chemdraw::diagram::LonePairOptions {
+    chitin_chemdraw::diagram::LonePairOptions {
+      preferred_angle: self.preferred_angle,
+      min_distance: self.min_distance,
+      max_distance: self.max_distance,
+      distance_step: self.distance_step,
+      directions: self.directions,
+      margin: self.margin,
+      max_candidates: self.max_candidates,
+      work_budget: self.work_budget,
+    }
+  }
+}
+
+/// Resolved position of an explicit lone pair, available for host inspection.
+#[derive(Debug, Serialize)]
+pub struct PlacedPair {
+  /// Index of the annotation in the JSON request.
+  pub annotation: usize,
+  /// Owning molecule occurrence name.
+  pub molecule: String,
+  /// Optional caller-assigned ID for electron-arrow attachment.
+  pub id: Option<String>,
+  /// Resolved local atom/bond attachment offset.
+  pub offset: [f64; 2],
+  /// Dot-axis orientation in radians.
+  pub angle: f64,
 }
 
 /// Instance-qualified attachment with an optional local displacement.
@@ -127,6 +342,15 @@ impl Default for Paint {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Annotation {
+  /// Authored single electron; does not infer spin or rewrite chemical facts.
+  ElectronDot {
+    /// Radical position, explicitly attached to an atom.
+    anchor: Reference,
+    /// Positive dot radius in local drawing units.
+    radius: f64,
+    /// Hexadecimal fill paint.
+    color: String,
+  },
   /// One isolated, uniformly translucent fragment highlight.
   Highlight {
     /// Selected occurrence.
@@ -144,12 +368,34 @@ pub enum Annotation {
   },
   /// Authored electron-flow curve, potentially connecting different occurrences.
   ElectronArrow {
+    /// Exact circular geometry by default; Bezier geometry is opt-in.
+    #[serde(default)]
+    curve: Curve,
+    /// Signed central sweep in degrees; absolute value 1..=180 for arc mode.
+    #[serde(default = "arc_angle", rename = "arc-angle")]
+    arc_angle: f64,
+    /// Minor, major or automatic path selection; defaults to automatic.
+    #[serde(default, rename = "arc-path")]
+    arc_path: ArcPath,
+    /// Preferred readable path in automatic mode; defaults to minor.
+    #[serde(default, rename = "arc-prefer")]
+    arc_prefer: ArcPreference,
+    /// Endpoint-local departure/arrival control offsets; absent uses `bend`.
+    #[serde(default)]
+    controls: Option<[[f64; 2]; 2]>,
     /// Source reference.
     from: Reference,
     /// Destination reference.
     to: Reference,
     /// Signed perpendicular curve displacement in shared drawing units.
+    #[serde(default)]
     bend: f64,
+    /// Preserve the bend, or request bounded obstacle-aware routing.
+    #[serde(default)]
+    route: Route,
+    /// Search resource limits and clearance; used only for automatic routing.
+    #[serde(default)]
+    routing: Routing,
     /// Explicit electron count notation.
     #[serde(default)]
     head: Head,
@@ -182,11 +428,21 @@ pub enum Annotation {
     radius: f64,
     /// RGB or RGBA fill color.
     color: String,
+    /// Optional ID for instance-scoped electron-arrow attachment.
+    #[serde(default)]
+    id: Option<String>,
+    /// Preserve the explicit offset/orientation, or suggest a free position.
+    #[serde(default)]
+    position: Route,
+    /// Local search settings for an automatic position.
+    #[serde(default)]
+    placement: PairPlacement,
   },
 }
 
 /// Finite ink envelope in shared y-down drawing units.
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Envelope {
   /// Componentwise minimum coordinate.
   pub min: [f64; 2],
@@ -290,4 +546,8 @@ pub struct Drawing {
   pub layers: Vec<Layer>,
   /// Absolute named anchors after all placements.
   pub molecules: Vec<Anchors>,
+  /// Automatic arrow decisions in routing order; no unresolved route is returned.
+  pub routing: Vec<RoutedArrow>,
+  /// Final explicit lone-pair positions, including automatic suggestions.
+  pub lone_pairs: Vec<PlacedPair>,
 }

@@ -219,15 +219,52 @@ pub fn prepare(request: &Request) -> Result<Preparation, Error> {
   })
 }
 
-fn reference(input: &Reference, entries: &BTreeMap<&str, Entry>) -> Result<core::Anchor, Error> {
+type Pairs<'a> = BTreeMap<&'a str, BTreeMap<&'a str, core::Anchor>>;
+
+fn reference(
+  input: &Reference,
+  entries: &BTreeMap<&str, Entry>,
+  pairs: &Pairs<'_>,
+) -> Result<core::Anchor, Error> {
   let entry = entries
     .get(input.molecule.as_str())
     .ok_or_else(|| Error::Input(format!("unknown molecule occurrence {:?}", input.molecule)))?;
   let anchor = match &input.target {
+    Target::Radical { atom: name } => {
+      core::Anchor::radical(entry.id, atom(entry, name)?, Point::new(0., 0.))
+    }
+    Target::BondFormation {
+      atom: name,
+      other_molecule,
+      other_atom,
+    } => {
+      let other = entries
+        .get(other_molecule.as_str())
+        .ok_or_else(|| Error::Input(format!("unknown molecule occurrence {other_molecule:?}")))?;
+      core::Anchor::bond_formation(
+        entry.id,
+        atom(entry, name)?,
+        other.id,
+        atom(other, other_atom)?,
+      )
+    }
     Target::Atom { atom: name } => core::Anchor::atom(entry.id, atom(entry, name)?),
     Target::Bond { from, to } => core::Anchor::bond(entry.id, bond(entry, from, to)?),
+    Target::LonePair { pair } => pairs
+      .get(input.molecule.as_str())
+      .and_then(|p| p.get(pair.as_str()))
+      .copied()
+      .ok_or_else(|| {
+        Error::Input(format!(
+          "unknown lone pair {pair:?} in {:?}",
+          input.molecule
+        ))
+      })?,
   };
-  Ok(anchor.with_offset(Point::new(input.offset[0], input.offset[1])))
+  Ok(anchor.with_offset(Point::new(
+    anchor.offset.x + input.offset[0],
+    anchor.offset.y + input.offset[1],
+  )))
 }
 
 fn paint(input: &Paint) -> Result<core::ArrowStyle, Error> {
@@ -243,8 +280,18 @@ fn paint(input: &Paint) -> Result<core::ArrowStyle, Error> {
 fn annotation(
   input: &Annotation,
   entries: &BTreeMap<&str, Entry>,
+  pairs: &Pairs<'_>,
 ) -> Result<core::Annotation, Error> {
   Ok(match input {
+    Annotation::ElectronDot {
+      anchor,
+      radius,
+      color,
+    } => core::Annotation::ElectronDot(core::ElectronDot {
+      anchor: reference(anchor, entries, pairs)?,
+      radius: *radius,
+      color: options::color(color)?,
+    }),
     Annotation::Highlight {
       molecule,
       atoms,
@@ -270,14 +317,28 @@ fn annotation(
       })
     }
     Annotation::ElectronArrow {
+      curve,
+      arc_angle,
+      arc_path,
+      arc_prefer,
+      controls,
       from,
       to,
       bend,
       head,
       style,
+      ..
     } => core::Annotation::ElectronArrow(core::ElectronArrow {
-      from: reference(from, entries)?,
-      to: reference(to, entries)?,
+      curve: match curve {
+        model::Curve::Bezier => core::ElectronCurve::Bezier,
+        model::Curve::Arc => core::ElectronCurve::Arc {
+          sweep: arc_angle.to_radians(),
+          path: arc_path.policy(arc_prefer),
+        },
+      },
+      controls: controls.map(|points| points.map(|p| Point::new(p[0], p[1]))),
+      from: reference(from, entries, pairs)?,
+      to: reference(to, entries, pairs)?,
       bend: *bend,
       head: match head {
         Head::Pair => core::ElectronHead::Pair,
@@ -307,8 +368,9 @@ fn annotation(
       separation,
       radius,
       color,
+      ..
     } => core::Annotation::LonePair(core::LonePair {
-      anchor: reference(anchor, entries)?,
+      anchor: reference(anchor, entries, pairs)?,
       angle: *angle,
       separation: *separation,
       radius: *radius,
@@ -339,8 +401,162 @@ pub fn compose(request: &Request) -> Result<Drawing, Error> {
     }
     entries.insert(instance.id.as_str(), entry);
   }
+  let mut obstacles = Vec::with_capacity(request.obstacles.len());
+  if request.obstacles.len() > 4096 {
+    return Err(Error::Input(
+      "mechanism exceeds 4096 routing obstacles".into(),
+    ));
+  }
+  for bounds in &request.obstacles {
+    if bounds.min[0] > bounds.max[0] || bounds.min[1] > bounds.max[1] {
+      return Err(Error::Input("routing obstacle bounds are reversed".into()));
+    }
+    obstacles.push(
+      chitin_chemdraw::geometry::Bounds::from_points([
+        Point::new(bounds.min[0], bounds.min[1]),
+        Point::new(bounds.max[0], bounds.max[1]),
+      ])?
+      .ok_or_else(|| Error::Input("empty routing obstacle".into()))?,
+    );
+  }
+  let mut pairs = Pairs::new();
+  // Reaction connectors are fixed before pair suggestion and arrow routing.
   for item in &request.annotations {
-    diagram.annotate(annotation(item, &entries)?);
+    if matches!(
+      item,
+      Annotation::ReactionArrow { .. }
+        | Annotation::Highlight { .. }
+        | Annotation::ElectronDot { .. }
+    ) {
+      diagram.annotate(annotation(item, &entries, &pairs)?);
+    }
+  }
+  let mut lone_pairs = Vec::new();
+  let mut remaining_work = 16_000_000;
+  for (index, item) in request.annotations.iter().enumerate() {
+    let Annotation::LonePair {
+      anchor,
+      id,
+      position,
+      placement,
+      ..
+    } = item
+    else {
+      continue;
+    };
+    if matches!(anchor.target, Target::LonePair { .. }) {
+      return Err(Error::Input(
+        "lone pairs must attach to an atom or bond".into(),
+      ));
+    }
+    let core::Annotation::LonePair(mut pair) = annotation(item, &entries, &pairs)? else {
+      return Err(Error::Input("expected lone pair".into()));
+    };
+    if matches!(position, model::Route::Auto) {
+      if remaining_work == 0 {
+        return Err(Error::Input(
+          "mechanism routing work budget exhausted".into(),
+        ));
+      }
+      let mut options = placement.options();
+      options.work_budget = options.work_budget.min(remaining_work);
+      let suggestion = diagram.suggest_lone_pair(pair, &options, &obstacles)?;
+      remaining_work -= suggestion.work_used;
+      if !suggestion.clear {
+        return Err(Error::Input(format!(
+          "no clear lone-pair position for annotation {index} after {} candidates",
+          suggestion.evaluated
+        )));
+      }
+      pair = suggestion.pair;
+    }
+    if let Some(id) = id
+      && (id.is_empty()
+        || id.len() > 128
+        || id.chars().any(char::is_control)
+        || pairs
+          .entry(anchor.molecule.as_str())
+          .or_default()
+          .insert(id.as_str(), pair.anchor)
+          .is_some())
+    {
+      return Err(Error::Input(
+        "lone-pair IDs must be unique within a molecule, nonempty and at most 128 bytes".into(),
+      ));
+    }
+    diagram.annotate(core::Annotation::LonePair(pair));
+    lone_pairs.push(model::PlacedPair {
+      annotation: index,
+      molecule: anchor.molecule.clone(),
+      id: id.clone(),
+      offset: [pair.anchor.offset.x, pair.anchor.offset.y],
+      angle: pair.angle,
+    });
+  }
+  for item in &request.annotations {
+    if matches!(
+      item,
+      Annotation::ElectronArrow {
+        route: model::Route::Manual,
+        ..
+      }
+    ) {
+      diagram.annotate(annotation(item, &entries, &pairs)?);
+    }
+  }
+  let mut routing = Vec::new();
+  for (index, item) in request.annotations.iter().enumerate() {
+    let Annotation::ElectronArrow {
+      route: model::Route::Auto,
+      routing: settings,
+      ..
+    } = item
+    else {
+      continue;
+    };
+    let core::Annotation::ElectronArrow(arrow) = annotation(item, &entries, &pairs)? else {
+      return Err(Error::Input("expected electron arrow".into()));
+    };
+    if remaining_work == 0 {
+      return Err(Error::Input(
+        "mechanism routing work budget exhausted".into(),
+      ));
+    }
+    let mut options = settings.options();
+    options.work_budget = options.work_budget.min(remaining_work);
+    let result = diagram.route_electron_arrow(arrow, &options, &obstacles)?;
+    remaining_work -= result.work_used;
+    if !result.clear {
+      return Err(Error::Input(format!(
+        "no clear electron-arrow route for annotation {index} after {} candidates and {} comparisons{}; adjust molecule placement or routing limits",
+        result.evaluated,
+        result.work_used,
+        if result.limited {
+          " (search limit reached)"
+        } else {
+          ""
+        }
+      )));
+    }
+    diagram.annotate(core::Annotation::ElectronArrow(result.arrow));
+    routing.push(model::RoutedArrow {
+      arc_path: match result.arrow.curve {
+        core::ElectronCurve::Bezier => None,
+        core::ElectronCurve::Arc {
+          path: core::ArcPath::Major,
+          ..
+        } => Some("major"),
+        core::ElectronCurve::Arc { .. } => Some("minor"),
+      },
+      arc_angle: match result.arrow.curve {
+        core::ElectronCurve::Bezier => None,
+        core::ElectronCurve::Arc { sweep, .. } => Some(sweep.to_degrees()),
+      },
+      annotation: index,
+      bend: result.arrow.bend,
+      evaluated: result.evaluated,
+      work_used: result.work_used,
+    });
   }
   let drawing = diagram.render()?;
   let bounds = drawing
@@ -361,5 +577,7 @@ pub fn compose(request: &Request) -> Result<Drawing, Error> {
     bounds: layers::envelope(bounds),
     layers: layers::encode(&drawing)?,
     molecules,
+    routing,
+    lone_pairs,
   })
 }
