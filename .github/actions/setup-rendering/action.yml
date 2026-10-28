@@ -1,0 +1,21 @@
+name: Set up rendering
+description: Install supported Typst compilers and static Cascadia Code fonts
+runs:
+  using: composite
+  steps:
+    - uses: typst-community/setup-typst@fee4b65b091cc546f02ce3be15fad8760f38a108 # v5
+      with:
+        typst-versions-json: |
+          {"typst-min": {"version": "0.14.0"}, "typst": {"version": "0.15.1"}}
+    - name: Install static code fonts
+      shell: bash
+      run: |
+        set -euo pipefail
+        archive="$RUNNER_TEMP/cascadia.zip"
+        curl --fail --location --retry 3 \
+          https://github.com/microsoft/cascadia-code/releases/download/v2407.24/CascadiaCode-2407.24.zip \
+          --output "$archive"
+        echo "e67a68ee3386db63f48b9054bd196ea752bc6a4ebb4df35adce6733da50c8474  $archive" | sha256sum --check
+        mkdir -p "$RUNNER_TEMP/michem-fonts"
+        unzip -j "$archive" 'ttf/static/CascadiaCode-*.ttf' -d "$RUNNER_TEMP/michem-fonts"
+        echo "TYPST_FONT_PATHS=$RUNNER_TEMP/michem-fonts" >> "$GITHUB_ENV"

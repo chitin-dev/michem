@@ -1,0 +1,47 @@
+name: Tests
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy --target wasm32-unknown-unknown
+          rustup default stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Run Rust tests
+        run: cargo test --workspace --locked
+      - name: Check Python syntax
+        run: python3 -m compileall -q scripts
+      - name: Build WASM plugin
+        run: bash scripts/build-plugin.sh
+      - uses: ./.github/actions/setup-rendering
+      - name: Run Typst assertions with both supported compilers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for compiler in typst-min typst; do
+            output=".temp/ci/tests/$compiler"
+            mkdir -p "$output"
+            for source in tests/*.typ; do
+              "$compiler" compile --root . "$source" "$output/$(basename "${source%.typ}").pdf"
+            done
+          done

@@ -1,5 +1,40 @@
 # Preparing a Michem release
 
+## GitHub Actions
+
+Branch pushes and pull requests run `Tests` and `Registry release check`.
+Tests include Rust formatting, Clippy, workspace tests, a locked WASM build,
+and every Typst assertion on 0.14.0 and 0.15.1. The Registry job prepares the
+compact submission, compiles the manual, examples and README previews with both
+compilers, and runs the pinned official package checker with network lints enabled.
+Both workflows can also be started manually.
+
+Download `release-assets` from a successful Registry workflow to review the
+candidate. Its Registry archive expands to `packages/preview/michem/<version>/`;
+its runtime archive contains only the downloadable package files. The artifact
+also includes the WASM plugin, manual, gallery, quick start, validation report
+and `SHA256SUMS`. Documentation PDFs are separate attachments, outside both packages.
+
+To publish, commit the intended release, set the same version in `typst.toml`
+and `Cargo.toml`, then push a matching tag such as `v0.1.0`:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The `GitHub Release` workflow checks the tag against both manifests and reruns
+tests and Registry validation at that tag. Only after both pass does a separate
+job receive release write permission, verify attachment checksums and create the
+GitHub Release with generated notes. It does not submit a Typst Registry PR.
+If a release already exists, publication fails without overwriting its assets.
+
+Static Cascadia Code fonts are downloaded from a fixed Microsoft release and
+verified with SHA-256. Libertinus Serif comes with Typst. Fonts are used only
+for CI rendering and are not bundled in either package.
+
+## Local preparation
+
 The source repository and the Typst Packages submission are separate trees.
 Release preparation writes a new directory under `.temp/release/`, never edits
 an existing candidate, and does not publish, commit or upload anything.

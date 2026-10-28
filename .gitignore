@@ -4,3 +4,4 @@
 **/*.png
 !/assets/readme/*.png
 /.temp/
+__pycache__/
