@@ -104,6 +104,169 @@ When selecting a named font, direct calls to `svg` and `diagram` require
 Named-font SVG exports reference fonts, so a standalone viewer needs the same
 font family. The default outlined SVG remains independent of viewer fonts.
 
+== Reaction route templates
+
+`reaction-route` composes named stages into an automatically arranged reaction
+scheme. Each stage groups its participating compounds; plus signs, reaction
+arrows, conditions and compound names are placed by the template.
+
+```typst
+#michem.reaction-route(
+  michem.reaction-stage("alcohol", michem.compound("CCO", name: [Alcohol])),
+  michem.reaction-stage("aldehyde", michem.compound("CC=O", name: [Aldehyde])),
+  michem.reaction-stage("acid", michem.compound("CC(=O)O", name: [Acid])),
+  atom-size: 9pt,
+  label-size: 10pt,
+)
+```
+
+- `compound(input, name: none, coefficient: none)` describes a SMILES string or
+  manual molecular input with its displayed name and explicit coefficient.
+- `reaction-stage(id, ..compounds, label: none)` groups one or more participants.
+  The template inserts plus signs between compounds. Its optional label is a
+  caption for the whole stage.
+- `reaction-step(from, to, above: none, below: none, equilibrium: false,
+  reactants: (), products: (), branch-curve: auto)` declares
+  a connection using stage IDs. Pass an array as `steps: (...)`; omitted steps
+  connect stages sequentially in declaration order. Branches and joins follow
+  the explicitly supplied connections. Coefficients and reaction connectivity
+  are never inferred or chemically balanced.
+- `reaction-route(..stages, steps: auto, ...)` measures and paints the complete
+  route. `font: "Libertinus Serif"`, `atom-size: 9pt`, `label-size: 10pt` and
+  `bond-length: 18pt` apply consistently to every participant. Lengths here are
+  physical Typst dimensions, not SVG pixels. No participant is independently
+  resized to a cell width. Molecular names share reserved image and caption rows.
+- `compound-grid(..compounds, columns: 3, ...)` displays related compounds with
+  the same shared font, atom size, label size and bond length. Its measured image
+  and name rows align even when structures have very different extents.
+
+`direction: "auto"` selects horizontal flow, or vertical flow for a branching
+graph that is too wide. Use `"right"` or `"down"` to select a direction explicitly.
+Linear horizontal routes wrap to the available line width and receive continuation
+arrows through reserved outer lanes. Branching directed acyclic graphs use
+topological layers; skip connections pass outside intermediate stages.
+This is deterministic graph layout, not a guarantee of a crossing-free drawing
+for every graph. Layered modes require an acyclic graph; use circular layout
+for a reaction cycle.
+
+=== Circular mechanism routes
+
+Pass `layout: "circular"` to arrange two or more stages around a circle.
+Omitting `steps` connects the stages in declaration order and closes the last
+stage back to the first. Explicit steps can describe a single directed cycle;
+the template follows its connectivity while keeping the first declared stage
+at the initial angle. Partial explicit steps must connect neighboring stages.
+
+```typst
+#michem.reaction-route(
+  michem.reaction-stage("a", michem.compound("CCO", name: [Stage A])),
+  michem.reaction-stage("b", michem.compound("CC=O", name: [Stage B])),
+  michem.reaction-stage("c", michem.compound("CC(=O)O", name: [Stage C])),
+  layout: "circular",
+  center: [Reaction cycle],
+)
+```
+
+`clockwise: true` controls progression around the circle; `false` reverses it.
+`start-angle: -90deg` places the first stage at the top; zero degrees is the right
+side, with positive angles increasing clockwise in the diagram's y-down axes.
+`radius: auto` increases the radius until the measured stage boxes, condition
+text, optional center label and arrow paths clear each other. An explicit
+positive radius fixes it; insufficient space returns an error rather than
+shrinking fonts or silently changing the requested radius. Radius search has
+64 trials and a 10,000pt upper bound.
+
+Molecules, coefficients, names and conditions remain upright. `atom-size`,
+`label-size` and `bond-length` retain the same physical units as linear routes.
+Circular layout uses `clockwise` rather than the linear `direction` option;
+`row-gap` has no role on a single ring.
+
+Reaction connectors are true SVG circular arcs. Endpoints are clipped against
+the complete measured stage bounds, including compound names. Arrowheads follow
+the circle tangent. `above` places a condition outside the ring; `below` places
+it inside. `equilibrium: true` adds an offset concentric return arc. Use it
+instead of declaring overlapping opposing steps on the same arc.
+
+`center: none` leaves the middle empty; otherwise it accepts native Typst
+content, measured with the route's label font and size. `max-width` still limits
+the final drawing: a circle is not flattened into an ellipse or individually
+rescaled to fit. Provide more space or adjust the shared molecular sizes when
+the selected clear circle is too large. Circular layout handles one ring, not
+arbitrary chord connections or several intersecting cycles; split those into
+separate panels. See `examples/circular-route.typ`.
+
+==== Step inputs and outputs
+
+In circular layout, put additional material inputs in a step's `reactants`
+array and released products in its `products` array. These participants belong
+to the transition; they do not become intermediate stages in the cycle.
+Each array accepts SMILES strings or `compound(...)` values, including names
+and coefficients. Multiple participants share a branch and receive plus signs.
+
+```typst
+michem.reaction-step("a", "b",
+  above: [Catalyst],
+  reactants: (michem.compound("O", name: [Water]),),
+  products: (
+    michem.compound("[H+]"),
+    michem.compound("[Cl-]"),
+  ),
+)
+```
+
+Input arrows point from the outer participant group into the step; output
+arrows leave the step and point toward the outer product group. By default,
+`branch-curve: "tangent-circle"` uses true quarter-circle arcs externally tangent
+to the circular track. The branch center and cycle center are separated by the
+sum of their radii, and arrowheads follow the branch tangent.
+Set `branch-curve: "bezier"` on `reaction-route` to use cubic Bezier branches
+instead. Both modes join the circular track tangentially. For an equilibrium step they
+attach to the outer track of the arrow pair. Molecules and names remain upright
+and retain the same `font`, `atom-size`, `label-size` and `bond-length` as the
+cycle's intermediates.
+
+`reaction-step` also accepts `branch-curve: auto` (inherit the route setting),
+`"tangent-circle"` or `"bezier"` to override both material branches for that step.
+For example, `reaction-step("a", "b", products: ("O",), branch-curve: "bezier")`
+uses a cubic branch even when the rest of the route uses tangent circles.
+
+The layout tries nearby attachment positions and longer branches, then increases
+an automatic radius when necessary. It reserves space for the complete molecular
+groups, names, conditions and branch paths. `arrow-length` supplies the initial
+branch radius for tangent circles, or the minimum radial space for Bezier branches;
+`gap`, `compound-gap` and `name-gap` also apply to their
+participants. A fixed radius must accommodate all branches, and `max-width`
+includes the peripheral groups. Participant arrays currently require circular
+layout. Solvents, catalysts and temperatures that are only annotations should
+remain in `above` or `below`. All material participation is explicitly supplied,
+without inferred stoichiometry or reaction chemistry. See
+`examples/circular-branches.typ` for both curve modes.
+
+`max-width: auto` uses the available line width. A physical length supplies an
+explicit total width including padding; `none` allows natural width without wrapping. A stage that
+cannot fit returns an error instead of shrinking its molecular labels. Enlarge
+the available width or adjust the shared `atom-size` and `bond-length` together.
+
+Spacing controls include `gap: 18pt`, `row-gap: 24pt`, `compound-gap: 8pt`,
+`name-gap: 5pt`, `label-gap: 4pt` and `padding: 6pt`. Arrow controls are
+`arrow-length: 36pt`, `arrow-width: 0.7pt`, `arrow-color: black` and
+`head-size: 4pt`. Measured conditions may increase the gap to keep their text
+inside connector lanes. `molecular-style: (:)` and `molecular-layout: (:)` pass
+shared depiction and layout options to the chemical renderer; route typography
+and bond length take precedence over these dictionaries.
+
+Call `reaction-route-data(..stages, steps: auto, max-width: none, ...)` inside
+`context` to inspect stage positions, compound scenes and connector points.
+Its width limit applies to the drawing before optional paint padding.
+Use `paint-reaction-route(data, padding: 6pt)` to paint the measured result.
+`compound-grid` accepts `gutter: 18pt`, `row-gap: 18pt` and `name-gap: 5pt`;
+its natural-width columns never rescale their molecular contents. Choose fewer
+columns if the gallery does not fit the page.
+
+See `examples/reaction-route.typ` for participant groups, a compound gallery,
+branching routes and automatic continuation. These templates compose reaction
+schemes; atom-level electron flow remains available through `mechanism` below.
+
 == Authored mechanisms
 
 `mechanism(..items, font: none, gap: 24pt, padding: 6pt, label-gap: 4pt)`

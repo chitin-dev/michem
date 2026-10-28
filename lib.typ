@@ -12,6 +12,12 @@
 #let diagram = chemical.diagram
 #let svg = chemical.svg
 
+#import "typst/compound.typ": compound, compound-grid
+#import "typst/route.typ": (
+  paint-reaction-route, reaction-route, reaction-route-data, reaction-stage,
+  reaction-step,
+)
+
 #import "typst/mechanism.typ": (
   atom-ref, bond-ref, edge, electron-arrow, electron-dot, formation-ref,
   highlight, lone-pair, mechanism, mechanism-data, mechanism-label,

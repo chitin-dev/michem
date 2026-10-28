@@ -16,3 +16,12 @@ mechanism: build
 
 mechanism-layout: build
     typst compile --root . examples/mechanism-layout.typ examples/mechanism-layout.pdf
+
+reaction-route: build
+    typst compile --root . examples/reaction-route.typ examples/reaction-route.pdf
+
+circular-route: build
+    typst compile --root . examples/circular-route.typ examples/circular-route.pdf
+
+circular-branches: build
+    typst compile --root . examples/circular-branches.typ examples/circular-branches.pdf
