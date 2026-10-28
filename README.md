@@ -170,7 +170,7 @@ for clear curves between the supplied endpoints.
 
 ## Public interfaces
 
-See the [user guide](docs/manual.pdf) for signatures, coordinate systems,
+See the [user guide source](https://github.com/chitin-dev/michem/blob/f05ae99e167f8773694b1d9208311bc10d6d351c/docs/manual.typ) for signatures, coordinate systems,
 parameter defaults and routing limits.
 
 ## Fonts and scope

@@ -43,32 +43,38 @@ The preparation script:
 1. Builds the plugin from the locked remote dependencies.
 2. Copies only the manifest, entrypoint, Typst modules, plugin, license and README
    into `packages/preview/michem/<version>/` inside the new candidate.
-3. Collects dependency-provided license texts, embedded Noto Sans licensing and
-   a third-party inventory from the exact resolved sources. Chitin's component
-   attribution follows its upstream release.
-4. Copies documentation and example sources and rewrites their local Michem
+3. Copies documentation and example sources into a separate `validation/` work
+   directory and rewrites their local Michem
    imports to `@preview/michem:<version>`. Internal package module imports remain
-   relative. Example helpers and the documentation theme remain alongside them.
-5. Builds a runtime archive without documentation or development files, extracts
+   relative. Example helpers and the documentation theme remain in that work
+   directory, outside the submission tree.
+4. Builds a runtime archive without documentation or development files, extracts
    it into an isolated package path, and compiles all README snippets, the
    self-contained quick start, the manual and every standalone example against
    that extracted runtime for each requested compiler.
+5. Copies only the four rendered README PNGs into `assets/readme/` in the
+   submission tree. It does not include `docs/`, `examples/`, `licenses/`, or
+   `THIRD_PARTY_NOTICES.md`.
 6. Runs the optional official package checker and records compiler versions,
    dependency revision and WASM/archive SHA-256 hashes in `report.json`.
 
 README preview sources live in `assets/readme/` and evaluate the snippets from
 the README itself. Run `just readme-assets` to regenerate their 192 PPI PNG files after
 changing an example. Preparation copies these sources and regenerates the four
-previews against the extracted runtime for each compiler. Sources and PNGs are
-included in the submission tree and excluded from the runtime archive.
+previews against the extracted runtime for each compiler. PNGs are included in
+the submission tree and excluded from the runtime archive. Preview sources stay
+in the separate validation work area.
 
-The generated PDFs are included in the submission tree for Typst Universe links
-and excluded from the runtime archive. No source Rust, build cache, tests, Git
+The generated PDFs remain in the validation work area. The README links to the
+upstream guide source. No source Rust, build cache, tests, Git
 metadata, workspace agent configuration or credentials directories are copied.
 
 ## Review and submit
 
-Review the candidate README, PDFs, third-party inventory and validation report.
+Review the candidate README, illustrations and validation report, and inspect
+the PDFs in the validation work area.
+When updating the guide, update the README's guide permalink to the corresponding
+committed revision before publishing.
 Both `minimum_compiler_tested: true` and a full checker pass should be present
 before submission. A checker failure stops preparation; do not submit a partial
 candidate without a completed report.
@@ -76,8 +82,10 @@ candidate without a completed report.
 Copy the generated `packages/preview/michem/<version>/` directory into a fork of
 `typst/packages` and open a pull request following its submission guidelines.
 Copy the submission directory, not the surrounding verification work area or
-runtime archive. Keep README-linked documentation and examples in the PR, with
-the existing `exclude` rules keeping them out of the downloadable runtime.
+runtime archive. The submission contains only `typst.toml`, `lib.typ`, `LICENSE`,
+`README.md`, `typst/`, `wasm/`, and the rendered README illustrations under
+`assets/readme/`. Existing `exclude` rules keep illustrations out of the
+downloadable runtime.
 
 The official guidance is at
 <https://github.com/typst/packages/blob/main/docs/README.md>.

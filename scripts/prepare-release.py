@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-LICENSE_PREFIXES = ("LICENSE", "COPYING", "NOTICE", "UNLICENSE")
 
 
 def run(args: list[str], *, cwd: Path = ROOT) -> None:
@@ -35,71 +34,6 @@ def copy_file(source: Path, destination: Path) -> None:
         raise ValueError(f"Expected a regular file: {source}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
-
-
-def collect_licenses(metadata: dict[str, Any], destination: Path) -> None:
-    """Retain dependency notices from the exact Cargo-resolved source trees."""
-    lines = [
-        "# Third-party notices",
-        "",
-        "Michem's original code is Apache-2.0. The precompiled WASM plugin uses",
-        "the following dependencies. This inventory also includes build-time",
-        "and procedural-macro dependencies; their license texts are retained.",
-        "",
-        "| Component | Declared license | License texts |",
-        "| --- | --- | --- |",
-    ]
-    packages = sorted(metadata["packages"], key=lambda package: package["name"])
-    for package in packages:
-        if package["source"] is None:
-            continue
-        source = Path(package["manifest_path"]).parent
-        files: list[Path] = []
-        for folder in (source, *list(source.parents)[:2]):
-            files = sorted(
-                item
-                for item in folder.iterdir()
-                if item.is_file() and item.name.upper().startswith(LICENSE_PREFIXES)
-            )
-            if files:
-                break
-        if package.get("license_file"):
-            declared = source / package["license_file"]
-            if declared not in files:
-                files.append(declared)
-        if not files:
-            raise ValueError(f"No license text found for {package['name']}")
-        component = f"{package['name']}-{package['version']}"
-        links = []
-        for license_file in files:
-            relative = Path("licenses") / component / license_file.name
-            copy_file(license_file, destination / relative)
-            links.append(f"[{license_file.name}]({relative.as_posix()})")
-        license_name = package["license"]
-        if license_name is None and package["name"] == "wasm-minimal-protocol":
-            license_name = "Unlicense (from its LICENSE file)"
-        if license_name is None:
-            raise ValueError(f"Review undeclared license for {component}")
-        lines.append(f"| {component} | {license_name} | {', '.join(links)} |")
-        if package["name"] == "chitin-chemdraw":
-            relative = Path("licenses/NotoSans/OFL-1.1.txt")
-            copy_file(source / "assets/NotoSans-OFL-1.1.txt", destination / relative)
-            lines.append(
-                f"| Embedded Noto Sans | OFL-1.1 | [Font license]({relative}) |"
-            )
-    lines.extend(
-        [
-            "",
-            "Chitin's component attribution follows its upstream release. This inventory",
-            "preserves its declared licenses and the license files provided by the",
-            "exact pinned source trees.",
-            "",
-            "CeTZ is imported separately as @preview/cetz:0.5.2; it is not embedded in",
-            "this WASM plugin. Named document/system fonts are not distributed here.",
-            "",
-        ]
-    )
-    (destination / "THIRD_PARTY_NOTICES.md").write_text("\n".join(lines))
 
 
 def package_sources(destination: Path, specification: str) -> None:
@@ -188,9 +122,12 @@ def main() -> None:
     for source in sorted((ROOT / "typst").rglob("*.typ")):
         copy_file(source, submission / source.relative_to(ROOT))
     copy_file(ROOT / "wasm/michem.wasm", submission / "wasm/michem.wasm")
-    collect_licenses(metadata, submission)
     specification = f"@preview/{name}:{version}"
-    package_sources(submission, specification)
+    validation = output / "validation"
+    validation.mkdir()
+    for filename in ("README.md", "typst.toml"):
+        copy_file(ROOT / filename, validation / filename)
+    package_sources(validation, specification)
 
     # Check the downloadable runtime alone: documentation is deliberately absent.
     runtime = output / "runtime/preview" / name / version
@@ -214,7 +151,7 @@ def main() -> None:
     )
     consumer_sources = [smoke]
     quick_start = consumer / "quick-start.typ"
-    copy_file(submission / "examples/quick-start.typ", quick_start)
+    copy_file(validation / "examples/quick-start.typ", quick_start)
     consumer_sources.append(quick_start)
     for index, block in enumerate(
         re.findall(
@@ -237,13 +174,13 @@ def main() -> None:
     with tarfile.open(archive, "r:gz") as bundle:
         bundle.extractall(extracted, filter="data")
     sources = [
-        submission / "docs/manual.typ",
-        *sorted((submission / "examples").rglob("*.typ")),
+        validation / "docs/manual.typ",
+        *sorted((validation / "examples").rglob("*.typ")),
     ]
     sources = [source for source in sources if "support" not in source.parts]
     previews = sorted(
         source
-        for source in (submission / "assets/readme").glob("*.typ")
+        for source in (validation / "assets/readme").glob("*.typ")
         if source.name != "theme.typ"
     )
     report: dict[str, Any] = {
@@ -280,7 +217,7 @@ def main() -> None:
                     executable,
                     "compile",
                     "--root",
-                    str(submission),
+                    str(validation),
                     "--package-path",
                     str(output / "verified-runtime"),
                     str(source),
@@ -293,7 +230,7 @@ def main() -> None:
                     executable,
                     "compile",
                     "--root",
-                    str(submission),
+                    str(validation),
                     "--package-path",
                     str(output / "verified-runtime"),
                     str(source),
@@ -308,6 +245,12 @@ def main() -> None:
                 "documents": len(sources) + len(consumer_sources),
                 "readme_assets": len(previews),
             }
+        )
+    # Only rendered README illustrations belong in the submission tree.
+    for source in previews:
+        copy_file(
+            source.with_suffix(".png"),
+            submission / source.relative_to(validation).with_suffix(".png"),
         )
     report["minimum_compiler_tested"] = any(
         compiler["version"].split()[1] == manifest["compiler"]
