@@ -150,11 +150,45 @@ Bond highlights take two atom IDs, not a bond index.
 For `reaction-route` (linear or circular) and `compound-grid`, pass
 `molecular-style: michem.style(debug: true)`. For a mechanism, set
 `style: michem.style(debug: true, font: "Libertinus Serif")` on each `mol`.
+
+Use the numbered view to select a bond, then supply the same endpoint IDs to a
+highlight. This Suzuki product uses `(6, 7)` for the new biaryl C–C bond.
+The route's molecular style applies to all participants, including peripheral
+step reactants and products in a circular layout.
+
+#example(```typst
+#michem.reaction-route(
+  michem.reaction-stage("substrate", "CC(=O)c1ccc(Br)cc1"),
+  michem.reaction-stage("product", michem.compound(
+    "CC(=O)c1ccc(-c2ccccc2)cc1",
+    highlights: ((bonds: ((6, 7),),),),
+  )),
+  molecular-style: michem.style(debug: true),
+)
+```)
+
+For a mechanism, debug is selected per occurrence. The following displays the
+same indices used by `atom-ref("aldehyde", 1)` and
+`bond-ref("aldehyde", 0, 1)`; named-font labels use the mechanism's chosen font.
+
+#example(```typst
+#michem.mechanism(
+  michem.mol("aldehyde", "O=Cc1ccccc1",
+    style: michem.style(debug: true)),
+  font: "Libertinus Serif",
+)
+```)
+
 Atom IDs are local to each molecular occurrence. Debug labels follow the
 molecular font, are 65% of its size, and are included in measured bounds.
 Short candidate offsets reduce collisions with text; dense structures may still
 need a larger bond length for inspection. Debug mode does not change atom IDs,
 chemical labels or atom positions. Disable it for final figures.
+
+For programmatic inspection, `context { repr(michem.diagram(input).atoms) }`
+returns IDs with normalized anchor positions. The numbered view is generally
+easier when choosing references in branched or cyclic structures. A complete
+inspection gallery is available in `examples/debug-indices.typ`.
 
 == Layout
 

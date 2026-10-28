@@ -87,7 +87,7 @@ The preparation script:
    it into an isolated package path, and compiles all README snippets, the
    self-contained quick start, the manual and every standalone example against
    that extracted runtime for each requested compiler.
-5. Copies only the four rendered README PNGs into `assets/readme/` in the
+5. Copies only the rendered README PNGs into `assets/readme/` in the
    submission tree. It does not include `docs/`, `examples/`, `licenses/`, or
    `THIRD_PARTY_NOTICES.md`.
 6. Runs the optional official package checker and records compiler versions,
@@ -95,7 +95,7 @@ The preparation script:
 
 README preview sources live in `assets/readme/` and evaluate the snippets from
 the README itself. Run `just readme-assets` to regenerate their 192 PPI PNG files after
-changing an example. Preparation copies these sources and regenerates the four
+changing an example. Preparation copies these sources and regenerates the
 previews against the extracted runtime for each compiler. PNGs are included in
 the submission tree and excluded from the runtime archive. Preview sources stay
 in the separate validation work area.

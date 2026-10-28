@@ -27,7 +27,7 @@ circular-branches: build
     typst compile --root . examples/circular-branches.typ examples/circular-branches.pdf
 
 readme-assets: build
-    for name in molecule reaction-route circular-route electron-flow; do typst compile --root . assets/readme/$name.typ assets/readme/$name.png --ppi 192 || exit $?; done
+    for name in molecule reaction-route circular-route electron-flow debug; do typst compile --root . assets/readme/$name.typ assets/readme/$name.png --ppi 192 || exit $?; done
 
 # Build the pinned plugin and prepare an isolated, verified submission directory.
 release *args:
