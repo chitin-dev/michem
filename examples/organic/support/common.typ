@@ -45,30 +45,33 @@
   font: "Libertinus Serif",
   padding: 10pt,
 )
-/// Connects measured occurrence edges with native condition text.
-#let reaction-step(
-  from,
-  to,
-  above: none,
-  below: none,
-  equilibrium: false,
-) = michem.reaction-arrow(
-  michem.edge(from, gap: 5pt),
-  michem.edge(to, side: "west", gap: 5pt),
-  above: above,
-  below: below,
-  equilibrium: equilibrium,
+// Route participants and local mechanism panels use the same physical scale.
+#let route-options = (
+  font: "Libertinus Serif",
+  atom-size: 10.5pt,
+  label-size: 9pt,
+  bond-length: 18pt,
+  molecular-style: mechanism-style,
 )
-/// Places a component separator in the reserved inter-molecule gap.
-#let component-plus(after, gap: 28pt) = michem.mechanism-label(
-  michem.edge(after, gap: gap),
-  [+],
+#let route(..stages, steps: auto) = michem.reaction-route(
+  ..stages,
+  steps: steps,
+  ..route-options,
+)
+/// Keep atom-level annotations in a labeled panel below the automatic route.
+#let with-electron-flow(route, detail) = stack(
+  dir: ttb,
+  spacing: 10pt,
+  align(center, route),
+  [*Electron flow*],
+  align(center, detail),
 )
 
 /// Shared page settings for standalone, offline-compilable teaching examples.
 #let setup(body) = {
   set page(width: 23cm, height: auto, margin: 16pt)
   set text(font: "Libertinus Serif", size: 10pt)
+  show raw: set text(font: "Cascadia Code")
   set par(justify: false)
   set figure(numbering: none, gap: 6pt)
   body

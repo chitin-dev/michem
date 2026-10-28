@@ -1,13 +1,12 @@
 #import "../../../lib.typ" as michem
 #import "common.typ": (
-  component-plus, mechanism-graph, mechanism-mol, mechanism-row,
-  mechanism-style, reaction-step,
+  mechanism-graph, mechanism-mol, mechanism-row, mechanism-style, route,
+  route-options, with-electron-flow,
 )
 #let chemistry = mechanism-style
 // Named atoms persist across stages, so all arrow endpoints are explicit.
 #let graph = mechanism-graph
 #let mol = mechanism-mol
-#let condition(body) = text(size: 9pt, body)
 // Michem's authored coordinates do not carry a front/rear crossing annotation.
 // This native Typst mask separates the rear stroke without changing topology.
 /// Separates the rear stroke at the explicitly authored bridge crossing.
@@ -46,36 +45,73 @@
   }
   mechanism-row(..objects, gap: gap)
 }
-/// Adds compact reaction conditions to the shared reaction-step connector.
-#let arrow(from, to, above: none, below: none) = reaction-step(
-  from,
-  to,
-  above: if above == none { none } else { condition(above) },
-  below: if below == none { none } else { condition(below) },
-)
-#let plus = component-plus
-/// Shows a substrate and product with an optional authored crossing overlay.
-#let scheme(start, product, above: none, below: none, crossings: ()) = drawing(
-  mol("s", start),
-  mol("p", product),
-  arrow("s", "p", above: above, below: below),
-  gap: 120pt,
-  crossings: crossings,
-)
-/// Places two reactants, a component separator and an overall product.
-#let crossed-scheme(
-  donor,
-  acceptor,
-  product,
-  above: none,
-  below: none,
-) = drawing(
-  mol("d", donor),
-  mol("e", acceptor),
-  mol("p", product),
-  plus("d"),
-  arrow("e", "p", above: above, below: below),
-  gap: 78pt,
+/// Paint the explicitly authored bridge crossing over the measured route card.
+#let bridged-route(..stages, steps: auto, crossings: ()) = layout(size => {
+  let data = michem.reaction-route-data(
+    ..stages,
+    steps: steps,
+    max-width: size.width - 12pt,
+    ..route-options,
+  )
+  for (i, stage) in data.stages.enumerate() {
+    if stage.id not in crossings { continue }
+    assert(stage.cards.len() == 1)
+    let card = stage.cards.first()
+    let local = michem.mechanism-data(michem.mol(
+      "bridge",
+      card.input.value,
+      style: chemistry,
+    ))
+    let placement = local.placements.first()
+    let upper = placement.atoms.find(atom => atom.id == "r2").position
+    let lower = placement.atoms.find(atom => atom.id == "b").position
+    let fraction = 0.2 / 1.05
+    let p = (upper.at(0), upper.at(1) + fraction * (lower.at(1) - upper.at(1)))
+    let low = local.scene.bounds.min
+    let x = (
+      (card.width - card.image-width) / 2
+        + (p.at(0) + placement.origin.at(0) - low.at(0)) * 0.75pt
+    )
+    let y = (
+      (stage.image-height - card.image-height) / 2
+        + (p.at(1) + placement.origin.at(1) - low.at(1)) * 0.75pt
+    )
+    let body = stage.body
+    stage.body = box(width: stage.width, height: stage.height, {
+      body
+      place(top + left, dx: x - 3pt, dy: y - 3pt, box(width: 6pt, height: 6pt)[
+        #place(top + left, circle(radius: 3pt, fill: white, stroke: none))
+        #place(top + left, dx: 3pt, line(
+          end: (0pt, 6pt),
+          stroke: 0.975pt + rgb("#202124"),
+        ))
+      ])
+    })
+    data.stages.at(i) = stage
+  }
+  michem.paint-reaction-route(data)
+})
+/// Overall synthesis uses automatic route arrows, conditions and participant groups.
+#let scheme(start, product, above: none, below: none, crossings: ()) = {
+  let stages = (
+    michem.reaction-stage("s", michem.compound(start)),
+    michem.reaction-stage("p", michem.compound(product)),
+  )
+  let steps = (michem.reaction-step("s", "p", above: above, below: below),)
+  if crossings.len() > 0 {
+    bridged-route(..stages, steps: steps, crossings: crossings)
+  } else { route(..stages, steps: steps) }
+}
+#let crossed-scheme(donor, acceptor, product, above: none, below: none) = route(
+  michem.reaction-stage(
+    "reactants",
+    michem.compound(donor),
+    michem.compound(acceptor),
+  ),
+  michem.reaction-stage("product", michem.compound(product)),
+  steps: (
+    michem.reaction-step("reactants", "product", above: above, below: below),
+  ),
 )
 /// Shows the two electron movements and highlights the newly formed C-C bond.
 #let crossed-addition(
@@ -83,49 +119,63 @@
   acceptor,
   product,
   oxygen-arrow: (arc-angle: 90deg, arc-path: "major"),
-) = drawing(
-  mol("d", donor),
-  mol("e", acceptor),
-  mol("p", product),
-  plus("d"),
-  michem.electron-arrow(
-    michem.atom-ref("d", "a"),
-    michem.atom-ref("e", "b"),
-    arc-angle: 90deg,
+) = with-electron-flow(
+  crossed-scheme(donor, acceptor, product, above: [C–C addition]),
+  stack(
+    dir: ttb,
+    spacing: 6pt,
+    drawing(
+      mol("d", donor),
+      mol("e", acceptor),
+      michem.electron-arrow(
+        michem.atom-ref("d", "a"),
+        michem.atom-ref("e", "b"),
+        arc-angle: 90deg,
+      ),
+      michem.electron-arrow(
+        michem.bond-ref("e", "b", "ob"),
+        michem.atom-ref("e", "ob"),
+        ..oxygen-arrow,
+      ),
+      gap: 58pt,
+    ),
+    [*New bond in the product*],
+    drawing(mol("p", product), michem.highlight("p", bonds: (("a", "b"),))),
   ),
-  michem.electron-arrow(
-    michem.bond-ref("e", "b", "ob"),
-    michem.atom-ref("e", "ob"),
-    ..oxygen-arrow,
-  ),
-  arrow("e", "p", above: [C–C addition]),
-  michem.highlight("p", bonds: (("a", "b"),)),
-  gap: 58pt,
 )
-/// Shows intramolecular bond formation without modifying source topology.
+/// Keep intramolecular electron flow local and show the product on the route.
 #let cyclic-addition(
   enolate,
   product,
   arc-angle: 90deg,
   oxygen-arrow: (arc-angle: 90deg, arc-path: "major"),
   crossings: (),
-) = drawing(
-  mol("e", enolate),
-  mol("p", product),
-  michem.electron-arrow(
-    michem.atom-ref("e", "a"),
-    michem.atom-ref("e", "b"),
-    arc-angle: arc-angle,
+) = with-electron-flow(
+  scheme(enolate, product, above: [intramolecular addition], crossings: if "p"
+    in crossings { ("p",) } else { () }),
+  stack(
+    dir: ttb,
+    spacing: 6pt,
+    drawing(
+      mol("e", enolate),
+      michem.electron-arrow(
+        michem.atom-ref("e", "a"),
+        michem.atom-ref("e", "b"),
+        arc-angle: arc-angle,
+      ),
+      michem.electron-arrow(
+        michem.bond-ref("e", "b", "ob"),
+        michem.atom-ref("e", "ob"),
+        ..oxygen-arrow,
+      ),
+    ),
+    [*New bond in the product*],
+    drawing(
+      mol("p", product),
+      michem.highlight("p", bonds: (("a", "b"),)),
+      crossings: crossings,
+    ),
   ),
-  michem.electron-arrow(
-    michem.bond-ref("e", "b", "ob"),
-    michem.atom-ref("e", "ob"),
-    ..oxygen-arrow,
-  ),
-  arrow("e", "p", above: [intramolecular addition]),
-  michem.highlight("p", bonds: (("a", "b"),)),
-  gap: 110pt,
-  crossings: crossings,
 )
 
 #let a-points = (

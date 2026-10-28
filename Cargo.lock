@@ -5,6 +5,7 @@ version = 4
 [[package]]
 name = "chitin-chem"
 version = "0.1.0"
+source = "git+https://github.com/chitin-dev/chitin?rev=5fe38eecb916e75b2bd25f39feeed6e7e799d9bf#5fe38eecb916e75b2bd25f39feeed6e7e799d9bf"
 dependencies = [
  "thiserror",
 ]
@@ -12,6 +13,7 @@ dependencies = [
 [[package]]
 name = "chitin-chemdraw"
 version = "0.1.0"
+source = "git+https://github.com/chitin-dev/chitin?rev=5fe38eecb916e75b2bd25f39feeed6e7e799d9bf#5fe38eecb916e75b2bd25f39feeed6e7e799d9bf"
 dependencies = [
  "chitin-chem",
  "thiserror",

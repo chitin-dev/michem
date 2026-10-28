@@ -12,13 +12,22 @@ The methyl end of the acetyl group supplies the enolate donor; the ring
 ketone supplies the electrophilic carbonyl.
 
 #figure(
-  align(center, drawing(
-    mol("s", d-stage()),
-    mol("p", d-stage(cyclic: true)),
-    arrow("s", "p", above: [dilute NaOH], below: [aqueous ethanol]),
-    michem.highlight("p", bonds: (("a", "b"),)),
-    gap: 125pt,
-    crossings: ("p",),
+  align(center, stack(
+    dir: ttb,
+    spacing: 8pt,
+    scheme(
+      d-stage(),
+      d-stage(cyclic: true),
+      above: [dilute NaOH],
+      below: [aqueous ethanol],
+      crossings: ("p",),
+    ),
+    [*New bond in the product*],
+    drawing(
+      mol("p", d-stage(cyclic: true)),
+      michem.highlight("p", bonds: (("a", "b"),)),
+      crossings: ("p",),
+    ),
   )),
   caption: [4-Acetyl-4-methylcyclohexanone gives
     4-hydroxy-1-methylbicyclo[2.2.2]octan-2-one.

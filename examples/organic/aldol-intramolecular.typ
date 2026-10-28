@@ -1,5 +1,5 @@
 #import "../../lib.typ" as michem
-#import "support/common.typ": setup
+#import "support/common.typ": route, setup
 #import "support/aldol-structures.typ": *
 #show: setup
 
@@ -15,13 +15,23 @@ The methyl group is already present at the end of the ketone's ethyl group;
 it becomes the methyl substituent on the enone's alpha carbon.
 
 #figure(
-  align(center, drawing(
-    mol("s", b-stage()),
-    mol("alcohol", b-stage(cyclic: true)),
-    mol("p", b-stage(cyclic: true, enone: true)),
-    arrow("s", "alcohol", above: [dilute NaOH], below: [ethanol/water]),
-    arrow("alcohol", "p", above: [base, warming], below: [−water]),
-    gap: 78pt,
+  align(center, route(
+    michem.reaction-stage("s", michem.compound(b-stage())),
+    michem.reaction-stage("alcohol", michem.compound(b-stage(cyclic: true))),
+    michem.reaction-stage(
+      "p",
+      michem.compound(b-stage(cyclic: true, enone: true)),
+      michem.compound("O"),
+    ),
+    steps: (
+      michem.reaction-step(
+        "s",
+        "alcohol",
+        above: [dilute NaOH],
+        below: [ethanol/water],
+      ),
+      michem.reaction-step("alcohol", "p", above: [base, warming]),
+    ),
   )),
   caption: [The starting ketoaldehyde is folded to show the missing ring bond.
     Addition and protonation give the beta-hydroxy ketone; dehydration gives the enone.],

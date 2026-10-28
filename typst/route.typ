@@ -474,8 +474,15 @@
     plus,
     compound-gap,
     name-gap,
-    image-height,
-    name-height,
+    if layout == "circular" {
+      stage.cards.map(card => card.image-height).fold(0pt, calc.max)
+    } else { image-height },
+    if layout == "circular" {
+      stage
+        .cards
+        .map(card => if card.name == none { 0pt } else { card.name.height })
+        .fold(0pt, calc.max)
+    } else { name-height },
   ))
   let edges = topology.edges.map(edge => {
     edge.insert("above-label", condition(edge.above, options))

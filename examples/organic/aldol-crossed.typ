@@ -1,5 +1,5 @@
 #import "../../lib.typ" as michem
-#import "support/common.typ": setup
+#import "support/common.typ": route, setup, with-electron-flow
 #import "support/aldol-structures.typ": *
 #show: setup
 
@@ -39,23 +39,32 @@ conjugate base below. Its electron pair makes the C=C bond while the beta
 C–O bond breaks: this is the elimination step of an *E1cb* mechanism.
 
 #figure(
-  align(center, drawing(
-    mol("e", a-product(e1cb: true)),
-    mol("p", a-product(enone: true)),
-    mol("hydroxide", "[OH-]"),
-    michem.electron-arrow(
-      michem.atom-ref("e", "a", offset: (-5, 10)),
-      michem.bond-ref("e", "a", "b"),
-      arc-angle: 90deg,
+  align(center, with-electron-flow(
+    route(
+      michem.reaction-stage("reactant", michem.compound(a-product(e1cb: true))),
+      michem.reaction-stage(
+        "products",
+        michem.compound(a-product(enone: true)),
+        michem.compound("[OH-]"),
+      ),
+      steps: (
+        michem.reaction-step("reactant", "products", above: [E1cb elimination]),
+      ),
     ),
-    michem.electron-arrow(
-      michem.bond-ref("e", "b", "ob"),
-      michem.atom-ref("e", "ob", offset: (-8, 0)),
-      arc-angle: 90deg,
+    drawing(
+      mol("e", a-product(e1cb: true)),
+      michem.electron-arrow(
+        michem.atom-ref("e", "a", offset: (-5, 10)),
+        michem.bond-ref("e", "a", "b"),
+        arc-angle: 90deg,
+      ),
+      michem.electron-arrow(
+        michem.bond-ref("e", "b", "ob"),
+        michem.atom-ref("e", "ob", offset: (-8, 0)),
+        arc-angle: 90deg,
+      ),
+      gap: 64pt,
     ),
-    arrow("e", "p", above: [E1cb elimination]),
-    plus("p"),
-    gap: 64pt,
   )),
   caption: [Elimination gives the enone and releases hydroxide. Together with
     the preceding alpha-deprotonation step, this is dehydration overall.],

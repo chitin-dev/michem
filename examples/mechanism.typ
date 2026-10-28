@@ -27,6 +27,23 @@
 
 #let pair = michem.atom-ref("hydroxide", 0, offset: (9, 7))
 
+== Substitution route
+
+#michem.reaction-route(
+  michem.reaction-stage("reactants", "[OH-]", "CC(C)I"),
+  michem.reaction-stage("products", "CC(C)O", "[I-]"),
+  steps: (
+    michem.reaction-step(
+      "reactants",
+      "products",
+      above: [H₂O],
+      below: [Substitution],
+    ),
+  ),
+)
+
+=== Electron flow at the reacting atoms
+
 #michem.mechanism(
   michem.mol("hydroxide", "[OH-]", at: (0pt, 0pt)),
   michem.mol(
@@ -39,7 +56,6 @@
     )),
     at: (85pt, 25pt),
   ),
-  michem.mol("product", "CC(C)O.[I-]", at: (210pt, 25pt)),
   michem.lone-pair(pair),
   michem.electron-arrow(
     pair,
@@ -51,26 +67,15 @@
     michem.atom-ref("substrate", 3),
     arc-angle: 90deg,
   ),
-  michem.reaction-arrow(
-    (110pt, 25pt),
-    (190pt, 25pt),
-    above: [H₂O],
-    below: [Substitution],
-  ),
   font: "Libertinus Serif",
 )
 
 #v(16pt)
 
-// Measured automatic packing and an equilibrium connector.
-#michem.mechanism(
-  michem.mol("acid", "CC(=O)O"),
-  michem.mol("base", "CC(=O)[O-]", scale: 1.25),
-  michem.reaction-arrow(
-    michem.edge("acid"),
-    michem.edge("base", side: "west"),
-    equilibrium: true,
-    above: [−H⁺],
-  ),
-  font: "Libertinus Serif",
+== Reversible deprotonation
+
+#michem.reaction-route(
+  michem.reaction-stage("acid", "CC(=O)O"),
+  michem.reaction-stage("base", "CC(=O)[O-]", "[H+]"),
+  steps: (michem.reaction-step("acid", "base", equilibrium: true),),
 )

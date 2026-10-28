@@ -80,32 +80,39 @@
 }
 #let tertiary-pair = michem.atom-ref("lda", "n", offset: (0, 12))
 #let tertiary-amide-deprotonation = figure(
-  align(center, mechanism-row(
-    mechanism-mol("lda", lda),
-    mechanism-mol("amide", tertiary-amide()),
-    mechanism-mol("enolate", tertiary-amide(formed: true)),
-    mechanism-mol("dipa", diisopropylamine),
-    michem.lone-pair(tertiary-pair, angle: 180deg, color: black),
-    michem.electron-arrow(
-      tertiary-pair,
-      michem.atom-ref("amide", "alpha-h"),
-      arc-angle: -120deg,
+  align(center, with-electron-flow(
+    route(
+      michem.reaction-stage("reactants", michem.compound(lda), michem.compound(
+        tertiary-amide(),
+      )),
+      michem.reaction-stage(
+        "products",
+        michem.compound(tertiary-amide(formed: true)),
+        michem.compound(diisopropylamine),
+      ),
     ),
-    michem.electron-arrow(
-      michem.bond-ref("amide", "alpha", "alpha-h"),
-      michem.bond-ref("amide", "k", "alpha"),
-      arc-angle: 150deg,
+    mechanism-row(
+      mechanism-mol("lda", lda),
+      mechanism-mol("amide", tertiary-amide()),
+      michem.lone-pair(tertiary-pair, angle: 180deg, color: black),
+      michem.electron-arrow(
+        tertiary-pair,
+        michem.atom-ref("amide", "alpha-h"),
+        arc-angle: -120deg,
+      ),
+      michem.electron-arrow(
+        michem.bond-ref("amide", "alpha", "alpha-h"),
+        michem.bond-ref("amide", "k", "alpha"),
+        arc-angle: 150deg,
+      ),
+      michem.electron-arrow(
+        michem.bond-ref("amide", "k", "o"),
+        michem.atom-ref("amide", "o"),
+        arc-angle: 90deg,
+        arc-path: "major",
+      ),
+      gap: 38pt,
     ),
-    michem.electron-arrow(
-      michem.bond-ref("amide", "k", "o"),
-      michem.atom-ref("amide", "o"),
-      arc-angle: 90deg,
-      arc-path: "major",
-    ),
-    reaction-step("amide", "enolate"),
-    component-plus("lda"),
-    component-plus("enolate"),
-    gap: 38pt,
   )),
   caption: [LDA removes an alpha proton from the tertiary amide. The products
     are an oxygen-centered enolate and diisopropylamine. Lithium ions are omitted.],
@@ -146,26 +153,33 @@
 )
 #let primary-pair = michem.atom-ref("lda", "n", offset: (0, 12))
 #let primary-amide-deprotonation = figure(
-  align(center, mechanism-row(
-    mechanism-mol("lda", lda),
-    mechanism-mol("amide", primary-amide()),
-    mechanism-mol("amidate", primary-amide(deprotonated: true)),
-    mechanism-mol("dipa", diisopropylamine),
-    michem.lone-pair(primary-pair, angle: 180deg, color: black),
-    michem.electron-arrow(
-      primary-pair,
-      michem.atom-ref("amide", "h-removed"),
-      arc-angle: -120deg,
+  align(center, with-electron-flow(
+    route(
+      michem.reaction-stage("reactants", michem.compound(lda), michem.compound(
+        primary-amide(),
+      )),
+      michem.reaction-stage(
+        "products",
+        michem.compound(primary-amide(deprotonated: true)),
+        michem.compound(diisopropylamine),
+      ),
     ),
-    michem.electron-arrow(
-      michem.bond-ref("amide", "n", "h-removed"),
-      michem.atom-ref("amide", "n"),
-      arc-angle: 150deg,
+    mechanism-row(
+      mechanism-mol("lda", lda),
+      mechanism-mol("amide", primary-amide()),
+      michem.lone-pair(primary-pair, angle: 180deg, color: black),
+      michem.electron-arrow(
+        primary-pair,
+        michem.atom-ref("amide", "h-removed"),
+        arc-angle: -120deg,
+      ),
+      michem.electron-arrow(
+        michem.bond-ref("amide", "n", "h-removed"),
+        michem.atom-ref("amide", "n"),
+        arc-angle: 150deg,
+      ),
+      gap: 38pt,
     ),
-    reaction-step("amide", "amidate", above: [LDA]),
-    component-plus("lda"),
-    component-plus("amidate"),
-    gap: 38pt,
   )),
   caption: [LDA preferentially removes an N-H proton from the primary amide,
     giving the amidate anion and diisopropylamine. Lithium ions are omitted.],

@@ -5,28 +5,16 @@
 
 = Measured mechanism layout
 
-// Automatic cells reserve space between rows and columns for annotations.
-#michem.mechanism(
-  michem.mol("alcohol", "CCO"),
-  michem.mol("aldehyde", "CC=O"),
-  michem.mol("acid", "CC(=O)O"),
-  michem.mol("ester", "CC(=O)OCC"),
-  michem.reaction-arrow(
-    michem.edge("alcohol"),
-    michem.edge("aldehyde", side: "west"),
-    above: [Oxidation],
+// Independent transformations use measured route layers.
+#michem.reaction-route(
+  michem.reaction-stage("alcohol", michem.compound("CCO", name: [Alcohol])),
+  michem.reaction-stage("aldehyde", michem.compound("CC=O", name: [Aldehyde])),
+  michem.reaction-stage("acid", michem.compound("CC(=O)O", name: [Acid])),
+  michem.reaction-stage("ester", michem.compound("CC(=O)OCC", name: [Ester])),
+  steps: (
+    michem.reaction-step("alcohol", "aldehyde", above: [Oxidation]),
+    michem.reaction-step("acid", "ester", above: [EtOH, H⁺]),
   ),
-  michem.reaction-arrow(
-    michem.edge("acid"),
-    michem.edge("ester", side: "west"),
-    above: [EtOH, H⁺],
-  ),
-  arrangement: "grid",
-  columns: 2,
-  gap: 48pt,
-  row-gap: 36pt,
-  arrow-space: 12pt,
-  font: "Libertinus Serif",
 )
 
 == Bezier routing around measured text

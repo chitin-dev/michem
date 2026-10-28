@@ -2,6 +2,7 @@
 
 #set page(width: 18cm, height: auto, margin: 16pt)
 #set text(font: "Libertinus Serif", size: 10pt)
+#show raw: set text(font: "Cascadia Code")
 
 = Circular paths and preferences
 

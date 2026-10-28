@@ -147,37 +147,49 @@
 }
 #let hydroxide-pair = michem.atom-ref("base", "o", offset: (-6, 0))
 #let alpha-acetone-deprotonation = figure(
-  align(center, mechanism-row(
-    mechanism-mol("base", hydroxide),
-    mechanism-mol("acetone", acetone-enolate()),
-    mechanism-mol("enolate", acetone-enolate(formed: true)),
-    mechanism-mol("water", "O"),
-    michem.lone-pair(
-      hydroxide-pair,
-      angle: 180deg,
-      separation: 3,
-      color: black,
+  align(center, with-electron-flow(
+    route(
+      michem.reaction-stage(
+        "reactants",
+        michem.compound(hydroxide),
+        michem.compound(acetone-enolate()),
+      ),
+      michem.reaction-stage(
+        "products",
+        michem.compound(acetone-enolate(formed: true)),
+        michem.compound("O"),
+      ),
+      steps: (
+        michem.reaction-step("reactants", "products", above: [deprotonation]),
+      ),
     ),
-    michem.electron-arrow(
-      hydroxide-pair,
-      michem.atom-ref("acetone", "h"),
-      arc-angle: -90deg,
+    mechanism-row(
+      mechanism-mol("base", hydroxide),
+      mechanism-mol("acetone", acetone-enolate()),
+      michem.lone-pair(
+        hydroxide-pair,
+        angle: 180deg,
+        separation: 3,
+        color: black,
+      ),
+      michem.electron-arrow(
+        hydroxide-pair,
+        michem.atom-ref("acetone", "h"),
+        arc-angle: -90deg,
+      ),
+      michem.electron-arrow(
+        michem.bond-ref("acetone", "alpha", "h"),
+        michem.bond-ref("acetone", "k", "alpha"),
+        arc-angle: 150deg,
+      ),
+      michem.electron-arrow(
+        michem.bond-ref("acetone", "k", "o"),
+        michem.atom-ref("acetone", "o"),
+        arc-angle: 90deg,
+        arc-path: "major",
+      ),
+      gap: 40pt,
     ),
-    michem.electron-arrow(
-      michem.bond-ref("acetone", "alpha", "h"),
-      michem.bond-ref("acetone", "k", "alpha"),
-      arc-angle: 150deg,
-    ),
-    michem.electron-arrow(
-      michem.bond-ref("acetone", "k", "o"),
-      michem.atom-ref("acetone", "o"),
-      arc-angle: 90deg,
-      arc-path: "major",
-    ),
-    reaction-step("acetone", "enolate", above: [deprotonation]),
-    component-plus("base"),
-    component-plus("enolate"),
-    gap: 40pt,
   )),
   caption: [Base-promoted deprotonation of acetone. The C-H electrons form
     the C=C bond, the carbonyl pi electrons move onto oxygen, and hydroxide

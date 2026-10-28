@@ -1,29 +1,57 @@
 #import "../lib.typ" as michem
+#import "theme.typ": border, example, manual
 
-#set page(paper: "a4", margin: 2cm)
-#set text(font: "Libertinus Serif", size: 10pt)
-#show raw: set text(font: "Cascadia Mono")
-#set heading(numbering: "1.")
+#show: manual
 
-= Michem 0.1.0
+= Getting started
 
 Michem renders chemical structures using Chitin compiled to WebAssembly. The
-Typst interface accepts SMILES and explicit molecular graphs. CeTZ handles
-reaction arrows, labels, branching, and composition on a shared canvas.
+Typst interface accepts SMILES and explicit molecular graphs. The package offers automatic reaction routes, authored electron-flow diagrams,
+and an adapter for composition on a shared CeTZ canvas.
 
-== Quick start
+== Installation and import
 
-Build the plugin with `bash scripts/build-plugin.sh`, then import `lib.typ`.
+Import the 0.1.0 package from Typst's preview namespace:
 
 ```typst
-#import "../lib.typ" as michem
-#michem.smiles("CC(=O)Oc1ccccc1C(=O)O", style: michem.style(font: "Libertinus Serif"))
+#import "@preview/michem:0.1.0" as michem
 ```
 
-#align(center)[#michem.smiles(
+For a source checkout, build the plugin with `bash scripts/build-plugin.sh`
+and import `lib.typ` by its relative path instead. This guide uses the local
+entrypoint so it can be built and reviewed before the release is published.
+
+== Your first molecule
+
+The source in each example card is executed to produce its displayed result.
+Choose the molecular font explicitly; document text rules do not set SVG fonts.
+
+#example(```typst
+#michem.smiles(
   "CC(=O)Oc1ccccc1C(=O)O",
   style: michem.style(font: "Libertinus Serif"),
-)]
+)
+```)
+
+== Choose an interface
+
+#table(
+  columns: (auto, 1fr),
+  inset: 6pt,
+  stroke: 0.4pt + border,
+  table.header([*Interface*], [*Use it for*]),
+  [`smiles`], [An individual SMILES or authored molecular structure.],
+  [`compound-grid`], [A gallery with uniform atom size and bond length.],
+  [`reaction-route`], [Automatic chains, branches, joins and circular routes.],
+  [`mechanism`], [Explicit atom-level electron flow and annotations.],
+  [`cetz.molecule`], [Structures and atom anchors on a custom CeTZ canvas.],
+)
+
+Michem draws the structures and connectivity you supply. It does not infer
+reaction products, reaction mechanisms, stoichiometry, or lone-pair counts.
+The route templates arrange whole stages; electron-flow endpoints remain explicit.
+
+= Molecular structures
 
 == Molecular input
 
@@ -40,6 +68,20 @@ atom must have a position. A coordinate unit is one nominal bond; x points right
 and y points up. SMILES positions follow zero-based parse order. Manual topology
 defaults to neutral, closed-shell atoms with inferred hydrogens; `hydrogens`
 fixes the attached-H count. Use SMILES for stereochemical descriptors.
+
+#example(```typst
+#let ethanol = michem.molecule(
+  atoms: (
+    michem.atom("c1", at: (0, 0)),
+    michem.atom("c2", at: (0.866, 0.5)),
+    michem.atom("o", element: "O", at: (1.732, 0)),
+  ),
+  bonds: (michem.bond("c1", "c2"), michem.bond("c2", "o")),
+)
+#michem.smiles(ethanol,
+  style: michem.style(font: "Libertinus Serif"),
+)
+```)
 
 == Style
 
@@ -79,6 +121,14 @@ no font file is passed to the plugin. See `examples/fonts.typ`.
 Without `font`, labels retain Chitin's bundled Noto Sans outlines.
 Document `set text` rules do not override the molecule font.
 
+#example(```typst
+#michem.smiles("NCC(=O)O", style: michem.style(
+  font: "Libertinus Serif",
+  color-map: (O: rgb("#bf4b45"), N: rgb("#476ca8")),
+  bond-colors: "uniform",
+))
+```)
+
 == Layout
 
 Pass `layout: michem.layout(...)`. Supported options are `max-atoms` (default
@@ -104,13 +154,13 @@ When selecting a named font, direct calls to `svg` and `diagram` require
 Named-font SVG exports reference fonts, so a standalone viewer needs the same
 font family. The default outlined SVG remains independent of viewer fonts.
 
-== Reaction route templates
+= Reaction route templates
 
 `reaction-route` composes named stages into an automatically arranged reaction
 scheme. Each stage groups its participating compounds; plus signs, reaction
 arrows, conditions and compound names are placed by the template.
 
-```typst
+#example(```typst
 #michem.reaction-route(
   michem.reaction-stage("alcohol", michem.compound("CCO", name: [Alcohol])),
   michem.reaction-stage("aldehyde", michem.compound("CC=O", name: [Aldehyde])),
@@ -118,9 +168,9 @@ arrows, conditions and compound names are placed by the template.
   atom-size: 9pt,
   label-size: 10pt,
 )
-```
+```)
 
-- `compound(input, name: none, coefficient: none)` describes a SMILES string or
+- `compound(input, name: none, coefficient: none, highlights: ())` describes a SMILES string or
   manual molecular input with its displayed name and explicit coefficient.
 - `reaction-stage(id, ..compounds, label: none)` groups one or more participants.
   The template inserts plus signs between compounds. Its optional label is a
@@ -149,7 +199,32 @@ This is deterministic graph layout, not a guarantee of a crossing-free drawing
 for every graph. Layered modes require an acyclic graph; use circular layout
 for a reaction cycle.
 
-=== Circular mechanism routes
+== Compound bond and fragment highlights
+
+`compound(..., highlights: (...))` attaches local highlight regions to a
+participant. Every region is a dictionary with `atoms`, `bonds`, `radius` and/or
+`color`; omitted settings use the same defaults as `highlight`. `radius` is in
+SVG pixels (default 4), while route atom sizes and bond lengths use physical
+Typst dimensions. Atom references are zero-based SMILES parse indices or authored
+atom names. Bond endpoints must identify an existing bond.
+
+```typst
+michem.compound("CC(=O)c1ccc(-c2ccccc2)cc1",
+  name: [Biaryl product],
+  highlights: ((bonds: ((6, 7),), color: rgb("#88c7a880")),),
+)
+```
+
+Regions are painted beneath bonds and native labels, and their complete ink
+bounds are included before placement. They work in `compound-grid`, linear or
+circular route stages, and step `reactants`/`products`. Repeated compounds keep
+their own regions; no occurrence ID is needed. Source atom identifiers and the
+shared label size are preserved. Circular stages use compact measured cards;
+only participants within the same stage share an image/name row.
+See the highlighted medicinal structures, Suzuki coupling and urea-cycle product
+in the README for complete source and rendered figures.
+
+== Circular mechanism routes
 
 Pass `layout: "circular"` to arrange two or more stages around a circle.
 Omitting `steps` connects the stages in declaration order and closes the last
@@ -157,7 +232,7 @@ stage back to the first. Explicit steps can describe a single directed cycle;
 the template follows its connectivity while keeping the first declared stage
 at the initial angle. Partial explicit steps must connect neighboring stages.
 
-```typst
+#example(```typst
 #michem.reaction-route(
   michem.reaction-stage("a", michem.compound("CCO", name: [Stage A])),
   michem.reaction-stage("b", michem.compound("CC=O", name: [Stage B])),
@@ -165,7 +240,7 @@ at the initial angle. Partial explicit steps must connect neighboring stages.
   layout: "circular",
   center: [Reaction cycle],
 )
-```
+```)
 
 `clockwise: true` controls progression around the circle; `false` reverses it.
 `start-angle: -90deg` places the first stage at the top; zero degrees is the right
@@ -195,7 +270,7 @@ the selected clear circle is too large. Circular layout handles one ring, not
 arbitrary chord connections or several intersecting cycles; split those into
 separate panels. See `examples/circular-route.typ`.
 
-==== Step inputs and outputs
+=== Step inputs and outputs
 
 In circular layout, put additional material inputs in a step's `reactants`
 array and released products in its `products` array. These participants belong
@@ -242,6 +317,21 @@ remain in `above` or `below`. All material participation is explicitly supplied,
 without inferred stoichiometry or reaction chemistry. See
 `examples/circular-branches.typ` for both curve modes.
 
+#example(```typst
+#michem.reaction-route(
+  michem.reaction-stage("a", "CO"),
+  michem.reaction-stage("b", "C=O"),
+  michem.reaction-stage("c", "O=CO"),
+  layout: "circular", center: [Cycle],
+  atom-size: 8pt, bond-length: 15pt,
+  steps: (
+    michem.reaction-step("a", "b", products: ("O",)),
+    michem.reaction-step("b", "c"),
+    michem.reaction-step("c", "a"),
+  ),
+)
+```)
+
 `max-width: auto` uses the available line width. A physical length supplies an
 explicit total width including padding; `none` allows natural width without wrapping. A stage that
 cannot fit returns an error instead of shrinking its molecular labels. Enlarge
@@ -266,8 +356,13 @@ columns if the gallery does not fit the page.
 See `examples/reaction-route.typ` for participant groups, a compound gallery,
 branching routes and automatic continuation. These templates compose reaction
 schemes; atom-level electron flow remains available through `mechanism` below.
+Reaction-flow examples use these route templates for material inputs and outputs.
+The organic teaching examples put authored electron-flow details in separate
+labeled panels, retaining explicit atom references, new-bond highlights and bridge
+crossing overlays. Resonance contributors retain their distinct double-headed
+resonance arrows.
 
-== Authored mechanisms
+= Authored mechanisms
 
 `mechanism(..items, font: none, gap: 24pt, padding: 6pt, label-gap: 4pt)`
 composes named molecular occurrences, fragment highlights, electron-flow arrows,
@@ -313,7 +408,21 @@ Bezier bend and style dimensions are shared SVG pixels; the arrow style accepts
 coordinates remain normalized y-up bond units. Reflections and reaction inference
 are not performed.
 
-=== Layout and panels
+#example(```typst
+#michem.mechanism(
+  michem.mol("base", "N"),
+  michem.mol("proton", "[H+]", at: (85pt, 0pt)),
+  michem.lone-pair(michem.atom-ref("base", 0), id: "pair"),
+  michem.electron-arrow(
+    michem.pair-ref("base", "pair"),
+    michem.atom-ref("proton", 0),
+    arc-angle: -60deg, route: "auto",
+  ),
+  font: "Libertinus Serif",
+)
+```)
+
+== Layout and panels
 
 `mechanism` and `mechanism-data` accept `arrangement: "row"`, `"column"`, or
 `"grid"`, with `columns: 2`, `gap: 24pt`, `row-gap: 36pt` and `arrow-space: 0pt`.
@@ -328,7 +437,7 @@ panels and separate product/byproduct panels to keep electron arrows local.
 See `examples/mechanism-layout.typ` for measured grids, relative placement and
 routing around a native Typst label.
 
-=== Bounded routing and suggestions
+== Bounded routing and suggestions
 
 Arrow `routing` settings are `margin` (2), `max-bend` (192), `bend-step` (12),
 `max-candidates` (65, at most 129), and `work-budget` (1,000,000).
@@ -374,7 +483,7 @@ environment variable when running `just mechanism`. This uses a local Cargo
 override without modifying the pinned remote revision. Publish and pin the
 matching Chitin changes before using a normal release build.
 
-== CeTZ canvas
+= CeTZ canvas
 
 Inside `cetz.canvas`, call `michem.cetz.molecule(mol, at: (0, 0), name: none,
 scale: 1, unit: 0.75pt, style: (:), layout: (:))`. The molecule is embedded as
@@ -389,14 +498,61 @@ adapter's contract.
 stroke: 0.7pt, label-gap: 3pt, label-side: "north")` creates an arrow with Typst
 labels. `label-side` selects the side for the `above` label: north, south, east,
 or west; the `below` label uses the opposite side. Use east or west for vertical
-arrows. Use CeTZ's line, bezier, mark, group, and content functions for more
-elaborate mechanisms, curved arrows and branched reaction schemes. See
-`examples/reaction.typ`.
+arrows. Use `reaction-route` for automatic reaction schemes, and CeTZ's line,
+bezier, mark, group, and content functions for custom atom annotations. See
+`examples/reaction.typ` for a route followed by an independent atom-anchor canvas.
 
-== Architecture
+#example(```typst
+#cetz.canvas({
+  let molecule = michem.cetz.molecule.with(
+    style: michem.style(font: "Libertinus Serif"),
+  )
+  molecule("NCC(=O)O", name: "glycine")
+  cetz.draw.line("glycine.atom-0",
+    (rel: (0, 1), to: "glycine.atom-0"), stroke: gray + 0.4pt)
+  cetz.draw.content((rel: (0, 1.2), to: "glycine.atom-0"), [Amino group])
+})
+```)
+
+= Architecture
 
 `michem-core` owns the JSON schema and the Chitin adapter. `michem-wasm` exposes
 the minimal Typst plugin protocol. The Typst package owns document content and
 CeTZ composition. Chemical facts, stereochemistry, layout and depiction remain
 in Chitin. Invalid SMILES, incomplete coordinates, unknown options, and
 unsupported chemical depictions return errors instead of partial drawings.
+
+== Example catalog
+
+All paths below are relative to the repository root. Each standalone example
+imports the local entrypoint. To use the published package, replace the local
+package path with `"@preview/michem:0.1.0"`, preserving the example's import alias
+or selected names.
+
+#table(
+  columns: (auto, 1fr),
+  inset: 5pt,
+  stroke: 0.4pt + border,
+  table.header([*Source*], [*Demonstrates*]),
+  [`examples/gallery.typ`],
+  [Runnable source and output for the main interfaces.],
+
+  [`examples/reaction-route.typ`],
+  [Participant groups, branches, joins and wrapping.],
+
+  [`examples/circular-route.typ`], [Clockwise and counterclockwise cycles.],
+  [`examples/circular-branches.typ`],
+  [Material inputs, outputs and both branch curves.],
+
+  [`examples/mechanism.typ`], [Highlights, lone pairs and electron flow.],
+  [`examples/mechanism-layout.typ`], [Measured placement, grids and panels.],
+  [`examples/organic/`],
+  [Aldol and deprotonation routes with local electron-flow panels.],
+
+  [`examples/anchors.typ`], [CeTZ atom anchors and transformations.],
+  [`examples/fonts.typ`], [Named-font selection and font comparisons.],
+)
+
+From a source checkout, `just docs` and `just gallery` build the plugin and
+compile this guide and the example gallery. Other standalone examples compile
+with `typst compile --root . examples/<name>.typ` after the plugin is built.

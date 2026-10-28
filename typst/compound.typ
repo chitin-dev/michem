@@ -2,11 +2,31 @@
 #import "mechanism.typ" as mechanism
 
 /// A labeled molecular participant; coefficient is explicit and never inferred.
-#let compound(value, name: none, coefficient: none) = {
+#let compound(value, name: none, coefficient: none, highlights: ()) = {
+  assert(
+    type(highlights) == array,
+    message: "Compound highlights must be an array",
+  )
+  for region in highlights {
+    assert(
+      type(region) == dictionary,
+      message: "A compound highlight must be a dictionary",
+    )
+    assert(
+      region.keys().all(key => key in ("atoms", "bonds", "radius", "color")),
+      message: "Compound highlights accept atoms, bonds, radius, and color",
+    )
+  }
   if coefficient != none and type(coefficient) in (int, float) {
     assert(coefficient > 0, message: "Compound coefficient must be positive")
   }
-  (kind: "compound", value: value, name: name, coefficient: coefficient)
+  (
+    kind: "compound",
+    value: value,
+    name: name,
+    coefficient: coefficient,
+    highlights: highlights,
+  )
 }
 
 #let content-value(value) = if type(value) in (int, float) { str(value) } else {
@@ -71,12 +91,18 @@
     type(input) == dictionary and input.at("kind", default: none) == "compound",
     message: "Expected compound(...) or a SMILES string",
   )
-  let data = mechanism.mechanism-data(mechanism.mol(
-    "compound",
-    input.value,
-    style: options.style,
-    layout: options.layout,
-  ))
+  let annotations = input
+    .at("highlights", default: ())
+    .map(region => mechanism.highlight("compound", ..region))
+  let data = mechanism.mechanism-data(
+    mechanism.mol(
+      "compound",
+      input.value,
+      style: options.style,
+      layout: options.layout,
+    ),
+    ..annotations,
+  )
   let image = mechanism.paint-mechanism(data, padding: 0pt)
   let dimensions = measure(image)
   let name = if input.name == none { none } else {

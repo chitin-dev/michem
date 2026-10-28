@@ -1,72 +1,152 @@
 #import "../lib.typ" as michem
+#import "../docs/theme.typ": example, example-page, version
 
-#set page(width: 19cm, height: auto, margin: 1.3cm)
-#set text(font: "Libertinus Serif", size: 10pt)
+#show: example-page
 
-#let sample(mol, caption, style: (:), height: 3cm) = align(center)[
-  #block(height: height, width: 100%)[#align(center + horizon)[#michem.smiles(
-    mol,
-    style: (font: "Libertinus Serif") + style,
-  )]]
-  #caption
+= Michem #version
+
+Chemical structures, reaction routes and authored mechanisms. Each card executes
+the source shown above its output. Import the published package with
+`#import "@preview/michem:0.1.0" as michem`; this source gallery uses the
+repository entrypoint for release verification.
+
+#block(breakable: false)[
+  == SMILES and a shared molecular scale
+
+  #example(```typst
+  #michem.compound-grid(
+    michem.compound("CCO", name: [Ethanol]),
+    michem.compound("CC(=O)Oc1ccccc1C(=O)O", name: [Aspirin]),
+    michem.compound("c1ccccc1", name: [Benzene]),
+    columns: 3,
+  )
+  ```)
 ]
 
-= Michem
-Chemical structures from SMILES and authored coordinates.
+#block(breakable: false)[
+  == Palette and aromatic bonds
 
-== SMILES
+  #example(```typst
+  #michem.smiles("Nc1ccc(O)cc1", style: michem.style(
+    font: "Libertinus Serif",
+    color-map: (O: rgb("#bf4b45"), N: rgb("#476ca8")),
+    aromatic: "circle", bond-colors: "uniform",
+  ))
+  ```)
+]
 
-#grid(
-  columns: (1fr, 1fr, 1fr),
-  gutter: 12pt,
-  sample("CCO", [Ethanol]),
-  sample("CC(=O)Oc1ccccc1C(=O)O", [Aspirin]),
-  sample("c1ccccc1", [Benzene], style: michem.style(aromatic: "circle")),
-)
+#block(breakable: false)[
+  == Authored coordinates
 
-== Colors and drawing parameters
+  #example(```typst
+  #let ethanol = michem.molecule(
+    atoms: (
+      michem.atom("c1", at: (0, 0)),
+      michem.atom("c2", at: (0.866, 0.5)),
+      michem.atom("o", element: "O", at: (1.732, 0)),
+    ),
+    bonds: (michem.bond("c1", "c2"), michem.bond("c2", "o")),
+  )
+  #michem.smiles(ethanol,
+    style: michem.style(font: "Libertinus Serif"),
+  )
+  ```)
+]
 
-#let palette = michem.style(
-  color-map: (O: rgb("#bf4b45"), N: rgb("#476ca8")),
-  foreground: rgb("#30333a"),
-  bond-length: 30,
-  stroke-width: 1.1,
-  bond-colors: "uniform",
-)
-#grid(
-  columns: (1fr, 1fr),
-  gutter: 12pt,
-  sample(
-    "NCC(=O)O",
-    [Custom palette and proportions],
-    style: palette,
-    height: 2.4cm,
-  ),
-  sample(
-    "NCC(=O)O",
-    [Monochrome],
-    style: michem.style(color-scheme: "monochrome"),
-    height: 2.4cm,
-  ),
-)
+#block(breakable: false)[
+  == Stereochemistry
 
-== Manual drawing
+  #example(```typst
+  #michem.compound-grid(
+    michem.compound("N[C@@H](C)C(=O)O", name: [Alanine]),
+    michem.compound("F/C=C/F", name: [Alkene configuration]),
+    columns: 2,
+  )
+  ```)
+]
 
-#let authored = michem.molecule(
-  atoms: (
-    michem.atom("c1", at: (0, 0)),
-    michem.atom("c2", at: (0.866, 0.5)),
-    michem.atom("o", element: "O", at: (1.732, 0)),
-  ),
-  bonds: (michem.bond("c1", "c2"), michem.bond("c2", "o")),
-)
-#michem.smiles(authored, style: michem.style(font: "Libertinus Serif"))
+#block(breakable: false)[
+  == Automatic reaction routes
 
-== Stereochemistry
+  The route supplies the plus signs, arrows, conditions and names at a shared
+  physical scale. Its stages and connectivity are supplied explicitly.
 
-#grid(
-  columns: (1fr, 1fr),
-  gutter: 12pt,
-  sample("N[C@@H](C)C(=O)O", [Tetrahedral center], height: 2.4cm),
-  sample("F/C=C/F", [Double-bond configuration], height: 2.4cm),
-)
+  #example(```typst
+  #michem.reaction-route(
+    michem.reaction-stage("a",
+      michem.compound("CCO", name: [Alcohol])),
+    michem.reaction-stage("b",
+      michem.compound("CC=O", name: [Aldehyde])),
+    michem.reaction-stage("c",
+      michem.compound("CC(=O)O", name: [Acid])),
+    steps: (
+      michem.reaction-step("a", "b", above: [PCC]),
+      michem.reaction-step("b", "c", above: [Oxidation]),
+    ),
+  )
+  ```)
+]
+
+#block(breakable: false)[
+  == Circular routes and released products
+
+  This is a layout demonstration. The product branch defaults to a circular arc
+  externally tangent to the cycle. Select `branch-curve: "bezier"` for cubic
+  branches; `examples/circular-branches.typ` compares the two modes.
+
+  #example(```typst
+  #michem.reaction-route(
+    michem.reaction-stage("a", "CO"),
+    michem.reaction-stage("b", "C=O"),
+    michem.reaction-stage("c", "O=CO"),
+    layout: "circular", center: [Cycle],
+    atom-size: 8pt, bond-length: 15pt,
+    steps: (
+      michem.reaction-step("a", "b", products: ("O",)),
+      michem.reaction-step("b", "c"),
+      michem.reaction-step("c", "a"),
+    ),
+  )
+  ```)
+]
+
+#block(breakable: false)[
+  == Explicit electron flow
+
+  Both the lone pair and its electron-flow destination are authored. Automatic
+  routing chooses a clear curve between those fixed endpoints.
+
+  #example(```typst
+  #michem.mechanism(
+    michem.mol("base", "N"),
+    michem.mol("proton", "[H+]", at: (85pt, 0pt)),
+    michem.lone-pair(michem.atom-ref("base", 0), id: "pair"),
+    michem.electron-arrow(
+      michem.pair-ref("base", "pair"),
+      michem.atom-ref("proton", 0),
+      arc-angle: -60deg, route: "auto",
+    ),
+    font: "Libertinus Serif",
+  )
+  ```)
+]
+
+#block(breakable: false)[
+  == Custom CeTZ composition
+
+  #example(```typst
+  #cetz.canvas({
+    let molecule = michem.cetz.molecule.with(
+      style: michem.style(font: "Libertinus Serif"),
+    )
+    molecule("NCC(=O)O", name: "glycine")
+    cetz.draw.line("glycine.atom-0",
+      (rel: (0, 1), to: "glycine.atom-0"), stroke: gray + 0.4pt)
+    cetz.draw.content((rel: (0, 1.2), to: "glycine.atom-0"), [Amino group])
+  })
+  ```)
+
+  More examples: `reaction-route.typ` for branches and wrapping,
+  `circular-route.typ` for cycle direction and equilibrium arrows,
+  `mechanism-layout.typ` for measured panels, and `anchors.typ` for CeTZ anchors.
+]
