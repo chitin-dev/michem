@@ -1,4 +1,9 @@
 //! Explicit molecular input without exposing Chitin's graph-local handles.
+//!
+//! Every build creates a fresh graph. SMILES parse indices and authored atom
+//! names form the public namespace; `Built` keeps their association with the
+//! new graph's handles. Positions are either absent or complete, so downstream
+//! layout never has to reconcile partial authored and generated coordinates.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -84,17 +89,36 @@ pub enum Order {
   Aromatic,
 }
 
+/// Validated input namespace and topology for one drawing call.
 pub(crate) struct Built {
+  /// Fresh graph owning every handle in `names` and `positions`.
   pub graph: MolecularGraph,
+  /// Input-order names, retained for anchors, highlights and debug annotations.
   pub names: Vec<(AtomId, String)>,
+  /// Complete normalized y-up coordinates, or `None` for automatic layout.
   pub positions: Option<BTreeMap<AtomId, Point>>,
 }
 
+/// Converts parser and input-model failures into the public input error variant.
 fn input(error: impl std::fmt::Display) -> Error {
   Error::Input(error.to_string())
 }
 
 impl Molecule {
+  /// Builds a fresh graph and resolves public names to its local atom handles.
+  ///
+  /// # Parameters
+  /// - `max_atoms`: positive atom budget, applied to both parsed and manual input.
+  ///
+  /// # Returns
+  /// Topology, input-order names and optional complete coordinates. SMILES names
+  /// are zero-based parse indices; manual names are preserved verbatim.
+  ///
+  /// # Errors
+  /// Rejects empty or oversized molecules, SMILES longer than 64 KiB, parse
+  /// failures, invalid elements/isotopes, duplicate or dotted manual names,
+  /// unknown bond endpoints and partial coordinate sets. Coordinate finiteness
+  /// is checked when a downstream layout is constructed.
   pub(crate) fn build(&self, max_atoms: usize) -> Result<Built, Error> {
     let built = match self {
       Self::Smiles { value, positions } => {
@@ -104,6 +128,7 @@ impl Molecule {
         let graph = chitin_chem::io::smiles::read_smiles(value)
           .map_err(input)?
           .into_graph();
+        // Parse order is the public index namespace; layout must never renumber it.
         let names: Vec<_> = graph
           .atoms()
           .enumerate()
@@ -159,6 +184,8 @@ impl Molecule {
             .with_formal_charge(Some(atom.charge))
             .with_unpaired_electrons(Some(0))
             .with_aromatic(atom.aromatic);
+          // Declared hydrogens suppress additional inference; an absent count
+          // leaves valence-based inference enabled in Chitin's chemical model.
           chemical = if let Some(count) = atom.hydrogens {
             chemical
               .with_declared_hydrogens(Some(count))

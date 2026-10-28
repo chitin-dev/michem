@@ -1,5 +1,28 @@
 //! Chitin-backed chemical drawing with a stable JSON boundary for Typst.
+//!
+//! Molecular topology, layout and depiction are delegated to Chitin. This crate
+//! translates caller-owned names into graph-local handles and returns portable
+//! geometry without retaining state between plugin calls. [`draw`] produces a
+//! standalone SVG; [`mechanism`] splits multi-molecule layout into preparation
+//! and composition so Typst can measure and arrange content between the calls.
+//!
+//! Normalized molecular coordinates use y-up bond units. SVG and mechanism
+//! scenes use y-down drawing units; one drawing unit is 0.75 Typst points at
+//! natural size. Standalone [`Anchor`] coordinates instead use a y-up unit box
+//! relative to the final framed SVG, including debug labels and padding.
+//!
+//! # Examples
+//! ```
+//! let request = michem_core::decode(
+//!   br#"{"molecule":{"kind":"smiles","value":"CCO"}}"#,
+//! )?;
+//! let drawing = michem_core::draw(&request)?;
+//! assert_eq!(drawing.atoms.len(), 3);
+//! assert!(drawing.svg.contains("<svg"));
+//! # Ok::<(), michem_core::Error>(())
+//! ```
 
+mod debug;
 mod host_font;
 pub mod mechanism;
 pub mod model;
@@ -45,6 +68,11 @@ pub enum Error {
 }
 
 /// One molecule and independent layout and paint configuration.
+///
+/// Unknown JSON fields are rejected; omitted layout and style fields use their
+/// defaults. A named font requires a prior [`label_requests`] round trip through
+/// Typst and matching [`Measurement`] rows. Deserialization alone does not check
+/// graph validity, dimensions or font coverage; drawing performs those checks.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Request {
@@ -64,6 +92,7 @@ pub struct Request {
   pub measurement_scale: f64,
 }
 
+/// Supplies the unscaled default for the optional font-measurement multiplier.
 fn unit_scale() -> f64 {
   1.
 }
@@ -80,6 +109,9 @@ pub struct Anchor {
 }
 
 /// A portable vector drawing and geometry for placing it in other canvases.
+///
+/// Atom IDs preserve input order and names, independently of layout. Width and
+/// height describe the SVG view box, not a Typst image resized by the caller.
 #[derive(Debug, Serialize)]
 pub struct Diagram {
   /// SVG; named-font labels reference the selected family.
@@ -95,6 +127,19 @@ pub struct Diagram {
 }
 
 /// Draws a molecule and preserves anchors in the exact SVG coordinate frame.
+///
+/// # Parameters
+/// - `request`: molecular input, layout limits, paint options and, for a named
+///   font, exact host measurements for all required text runs.
+///
+/// # Returns
+/// A framed SVG and input-order atom anchors normalized to that same frame.
+/// Complete authored coordinates bypass layout; debug annotations enlarge ink
+/// bounds without moving atoms. Layout diagnostics are advisory.
+///
+/// # Errors
+/// Rejects invalid chemistry, incomplete authored positions, exceeded atom or
+/// layout budgets, malformed colors, missing font metrics and export failures.
 pub fn draw(request: &Request) -> Result<Diagram, Error> {
   let mut options = request.style.depict_options()?;
   if let Some(family) = &request.style.font {
@@ -107,6 +152,27 @@ pub fn draw(request: &Request) -> Result<Diagram, Error> {
     None => layout::generate(&input.graph, &request.layout.options())?,
   };
   let drawing = depict::depict(&input.graph, &coordinates, &options)?;
+  let drawing = if request.style.debug {
+    let atoms = input
+      .names
+      .iter()
+      .map(|(id, name)| {
+        let point = coordinates
+          .position(*id)
+          .ok_or_else(|| Error::Input(format!("missing position for atom {name}")))?;
+        Ok((
+          name.as_str(),
+          chitin_chemdraw::geometry::Point::new(
+            point.x * options.bond_length,
+            -point.y * options.bond_length,
+          ),
+        ))
+      })
+      .collect::<Result<Vec<_>, Error>>()?;
+    debug::overlay(drawing, &options, &atoms, 1.)?
+  } else {
+    drawing
+  };
   let svg = match &request.style.font {
     Some(family) => host_font::export(&drawing, &framing, family)?,
     None => svg::export(&drawing, &framing)?,
@@ -144,6 +210,20 @@ pub fn draw(request: &Request) -> Result<Diagram, Error> {
 }
 
 /// Lists deduplicated label runs before Typst measures the requested font.
+///
+/// # Parameters
+/// - `request`: the same molecular input and style used for drawing. Its
+///   `measurement_scale` adds text sizes needed by a scaled mechanism instance.
+///   Existing measurement rows are not needed for this discovery step.
+///
+/// # Returns
+/// Unique text/size pairs, including debug IDs and both base and scaled sizes.
+/// Each size has a hexadecimal IEEE-754 token that the host must echo unchanged
+/// to preserve exact lookup across JSON number conversions.
+///
+/// # Errors
+/// Rejects nonpositive or nonfinite scale, invalid molecular input, unsupported
+/// depiction text and invalid text-request sizes.
 pub fn label_requests(request: &Request) -> Result<Vec<Label>, Error> {
   if !request.measurement_scale.is_finite() || request.measurement_scale <= 0. {
     return Err(Error::Input(
@@ -156,6 +236,14 @@ pub fn label_requests(request: &Request) -> Result<Vec<Label>, Error> {
     depict::measurement_requests(&input.graph, &options)?
       .into_iter()
       .collect();
+  if request.style.debug {
+    for (_, name) in &input.names {
+      requests.insert(chitin_chemdraw::font::TextRequest::new(
+        name,
+        options.font_size * debug::SIZE_RATIO,
+      )?);
+    }
+  }
   for item in requests.clone() {
     requests.insert(chitin_chemdraw::font::TextRequest::new(
       item.content(),
@@ -175,6 +263,17 @@ pub fn label_requests(request: &Request) -> Result<Vec<Label>, Error> {
 }
 
 /// Decodes a bounded JSON request before entering the drawing pipeline.
+///
+/// # Parameters
+/// - `input`: UTF-8 JSON encoding of [`Request`], at most 4 MiB.
+///
+/// # Returns
+/// A deserialized request with defaults applied. Call [`draw`] or
+/// [`label_requests`] to validate chemical and geometric inputs.
+///
+/// # Errors
+/// Rejects oversized input, malformed JSON, unknown fields and incorrect field
+/// types. No graph construction or layout is performed here.
 pub fn decode(input: &[u8]) -> Result<Request, Error> {
   if input.len() > 4 * 1024 * 1024 {
     return Err(Error::Input("request exceeds 4 MiB".into()));

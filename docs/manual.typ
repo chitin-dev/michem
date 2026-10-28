@@ -98,6 +98,7 @@ and label padding together. Explicit overrides are absolute drawing dimensions.
   [`bond-length`], [Nominal drawing bond length; default 24],
   [`font-size`, `stroke-width`], [Positive drawing dimensions],
   [`font`], [Any font family available to Typst, e.g. `"Libertinus Serif"`],
+  [`debug`], [Show original atom IDs in blue; default `false`],
   [`wedge-width`, `bond-spacing`], [Positive drawing dimensions],
   [`short-bond-ratio`], [Secondary stroke fraction; Chitin default 0.8],
   [`label-padding`], [Clearance around atom labels],
@@ -128,6 +129,32 @@ Document `set text` rules do not override the molecule font.
   bond-colors: "uniform",
 ))
 ```)
+
+== Inspecting atom indices
+
+Use `style(debug: true)` to show the atom IDs accepted by `highlight`,
+`atom-ref`, and `bond-ref`. All atoms are marked, including unlabeled carbons.
+SMILES IDs are zero-based parse indices; branches count as atoms, while ring
+closure digits and implicit hydrogens do not. Explicit hydrogen atoms such as
+`[H]` have their own IDs. Manually authored molecules show their atom names.
+For example, `CC(=O)O` has IDs `0`, `1`, `2`, `3`; its carbonyl bond is `(1, 2)`.
+Bond highlights take two atom IDs, not a bond index.
+
+#example(```typst
+#michem.smiles("CC(=O)O", style: michem.style(
+  font: "Libertinus Serif",
+  debug: true,
+))
+```)
+
+For `reaction-route` (linear or circular) and `compound-grid`, pass
+`molecular-style: michem.style(debug: true)`. For a mechanism, set
+`style: michem.style(debug: true, font: "Libertinus Serif")` on each `mol`.
+Atom IDs are local to each molecular occurrence. Debug labels follow the
+molecular font, are 65% of its size, and are included in measured bounds.
+Short candidate offsets reduce collisions with text; dense structures may still
+need a larger bond length for inspection. Debug mode does not change atom IDs,
+chemical labels or atom positions. Disable it for final figures.
 
 == Layout
 

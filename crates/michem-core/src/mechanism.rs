@@ -4,6 +4,12 @@
 //! arranges those bounds, freezes every atom position, then composes against the
 //! same named instances. Every call reconstructs its graph-local handle mapping;
 //! neither process-local IDs nor mutable WASM state cross the protocol boundary.
+//!
+//! Composition resolves fixed annotations first, then explicit lone pairs,
+//! manual electron arrows and automatic electron arrows. Later searches see
+//! earlier accepted annotations as obstacles. Pair placement and arrow routing
+//! share a finite request-wide work allowance and fail explicitly if no clear
+//! candidate is found. These searches choose geometry, not reaction chemistry.
 
 mod layers;
 pub mod model;
@@ -21,14 +27,27 @@ use model::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
+/// One reconstructed occurrence and its request-local chemical namespace.
 struct Entry {
+  /// Handle valid only in the native diagram built for the current call.
   id: core::MoleculeId,
+  /// Graph owning the atom and bond handles used by annotations.
   graph: MolecularGraph,
+  /// Normalized y-up coordinates, before paint scaling and instance placement.
   coordinates: Layout2d,
+  /// Original input-order atom IDs associated with this graph's handles.
   names: Vec<(AtomId, String)>,
 }
 
 /// Decodes one bounded versioned request, rejecting unsupported versions.
+///
+/// # Parameters
+/// - `bytes`: UTF-8 JSON for a [`model::Request`], at most 4 MiB.
+///
+/// # Returns
+/// A request with defaults applied and occurrence-level limits validated.
+/// Graph construction, annotation references and routing obstacles are checked
+/// later by [`prepare`] or [`compose`], as appropriate for each phase.
 ///
 /// # Errors
 /// Rejects malformed JSON, unknown fields, oversized requests, invalid versions,
@@ -42,6 +61,10 @@ pub fn decode(bytes: &[u8]) -> Result<Request, Error> {
   Ok(request)
 }
 
+/// Checks wire version, occurrence names, transforms and top-level size limits.
+///
+/// Shared by direct Rust calls and decoded requests. Chemical graphs and
+/// annotation-specific constraints are deliberately checked by their consumers.
 fn validate(request: &Request) -> Result<(), Error> {
   if request.version != VERSION {
     return Err(Error::Input(format!(
@@ -83,6 +106,20 @@ fn validate(request: &Request) -> Result<(), Error> {
   Ok(())
 }
 
+/// Reconstructs and snapshots one occurrence in the current native diagram.
+///
+/// # Parameters
+/// - `diagram`: diagram receiving the new occurrence and its fresh handle.
+/// - `instance`: topology, font measurements and requested placement.
+/// - `local`: preparation mode; suppresses translation and permits layout.
+///
+/// # Returns
+/// The owning graph, coordinates and stable name mapping for later resolution.
+/// Scale applies in both modes; composition requires complete frozen positions.
+///
+/// # Errors
+/// Propagates input, layout, font and depiction failures. Missing coordinates in
+/// composition are rejected rather than regenerated after host-side placement.
 fn add(diagram: &mut core::Diagram, instance: &Instance, local: bool) -> Result<Entry, Error> {
   let input = instance
     .drawing
@@ -123,6 +160,7 @@ fn add(diagram: &mut core::Diagram, instance: &Instance, local: bool) -> Result<
   })
 }
 
+/// Resolves an original atom ID within one occurrence, rejecting unknown names.
 fn atom(entry: &Entry, name: &str) -> Result<AtomId, Error> {
   entry
     .names
@@ -132,6 +170,40 @@ fn atom(entry: &Entry, name: &str) -> Result<AtomId, Error> {
     .ok_or_else(|| Error::Input(format!("unknown atom {name:?} in molecule occurrence")))
 }
 
+/// Adds optional atom IDs using final occurrence positions and scaled font sizes.
+///
+/// The same path is used during preparation and composition so debug ink
+/// participates in measured bounds. Disabled debug mode returns the drawing
+/// unchanged; missing positions or exact font metrics propagate as errors.
+fn debug_overlay(
+  drawing: chitin_chemdraw::Drawing,
+  diagram: &core::Diagram,
+  instance: &Instance,
+  entry: &Entry,
+) -> Result<chitin_chemdraw::Drawing, Error> {
+  if !instance.drawing.style.debug {
+    return Ok(drawing);
+  }
+  let mut options = instance.drawing.style.depict_options()?;
+  if let Some(family) = &instance.drawing.style.font {
+    options.font = host_font::face(family, &instance.drawing.measurements)?;
+  }
+  let atoms = entry
+    .names
+    .iter()
+    .map(|(id, name)| {
+      Ok((
+        name.as_str(),
+        diagram.resolve(core::Anchor::atom(entry.id, *id))?,
+      ))
+    })
+    .collect::<Result<Vec<_>, Error>>()?;
+  crate::debug::overlay(drawing, &options, &atoms, instance.placement.scale)
+}
+
+/// Resolves an existing logical bond by either ordering of its endpoint names.
+///
+/// Missing atoms or bonds fail explicitly; no new bond is inferred or inserted.
 fn bond(entry: &Entry, from: &str, to: &str) -> Result<chitin_chem::BondId, Error> {
   entry
     .graph
@@ -139,6 +211,10 @@ fn bond(entry: &Entry, from: &str, to: &str) -> Result<chitin_chem::BondId, Erro
     .ok_or_else(|| Error::Input(format!("no bond between {from:?} and {to:?}")))
 }
 
+/// Exports named atom centers and bond midpoints in the diagram's current frame.
+///
+/// Preparation uses a zero-translation frame; composition uses final placement.
+/// Native handles are replaced by original input names before serialization.
 fn anchors(diagram: &core::Diagram, entry: &Entry, id: &str) -> Result<Anchors, Error> {
   let mut atoms = Vec::new();
   let names: BTreeMap<_, _> = entry.names.iter().map(|(id, name)| (*id, name)).collect();
@@ -173,6 +249,10 @@ fn anchors(diagram: &core::Diagram, entry: &Entry, id: &str) -> Result<Anchors, 
 
 /// Prepares local molecular geometry for a measuring and arranging host.
 ///
+/// # Parameters
+/// - `request`: named occurrences with molecular inputs and exact host metrics.
+///   Authored annotations and routing obstacles do not affect this phase.
+///
 /// # Returns
 /// Measured bounds, instance-qualified anchors and complete normalized y-up atom
 /// positions in input order. Translation is ignored here; positive scale applies.
@@ -191,7 +271,7 @@ pub fn prepare(request: &Request) -> Result<Preparation, Error> {
     if total > 8192 {
       return Err(Error::Input("mechanism exceeds 8192 atoms".into()));
     }
-    let drawing = diagram.render()?;
+    let drawing = debug_overlay(diagram.render()?, &diagram, instance, &entry)?;
     let bounds = drawing
       .bounds()
       .ok_or_else(|| Error::Input("empty molecular drawing".into()))?;
@@ -219,8 +299,14 @@ pub fn prepare(request: &Request) -> Result<Preparation, Error> {
   })
 }
 
+/// Explicit lone-pair attachments, indexed first by occurrence, then by pair ID.
 type Pairs<'a> = BTreeMap<&'a str, BTreeMap<&'a str, core::Anchor>>;
 
+/// Resolves an occurrence-qualified attachment and adds its local displacement.
+///
+/// Formation references may span two occurrences. Lone-pair references retain
+/// the resolved pair offset and add the caller's offset before instance scaling.
+/// Unknown occurrences, atoms, bonds or pair IDs return input errors.
 fn reference(
   input: &Reference,
   entries: &BTreeMap<&str, Entry>,
@@ -267,6 +353,9 @@ fn reference(
   )))
 }
 
+/// Converts arrow paint without scaling shared-canvas dimensions by a molecule.
+///
+/// Color syntax is checked here; native annotation rendering validates geometry.
 fn paint(input: &Paint) -> Result<core::ArrowStyle, Error> {
   Ok(core::ArrowStyle {
     color: options::color(&input.color)?,
@@ -277,6 +366,11 @@ fn paint(input: &Paint) -> Result<core::ArrowStyle, Error> {
   })
 }
 
+/// Converts one wire annotation to native geometry using this call's namespaces.
+///
+/// Public angles in degrees become native radians only for circular sweeps;
+/// lone-pair angles already use radians. Routing policies are handled by
+/// composition, so this conversion itself performs no automatic search.
 fn annotation(
   input: &Annotation,
   entries: &BTreeMap<&str, Entry>,
@@ -381,6 +475,10 @@ fn annotation(
 
 /// Composes frozen molecular geometry after the host has chosen final placements.
 ///
+/// # Parameters
+/// - `request`: complete frozen coordinates, final occurrence placements,
+///   annotations and host-measured routing obstacles in shared y-down units.
+///
 /// # Returns
 /// Painter-ordered vector and host-text layers plus absolute named anchors. No
 /// native layout is rerun and no host font is replaced by viewer-resolved text.
@@ -432,6 +530,8 @@ pub fn compose(request: &Request) -> Result<Drawing, Error> {
     }
   }
   let mut lone_pairs = Vec::new();
+  // Clamp each search to the remaining request-wide allowance so individually
+  // bounded annotations cannot multiply the intended request-wide work limit.
   let mut remaining_work = 16_000_000;
   for (index, item) in request.annotations.iter().enumerate() {
     let Annotation::LonePair {
@@ -493,6 +593,7 @@ pub fn compose(request: &Request) -> Result<Drawing, Error> {
       angle: pair.angle,
     });
   }
+  // Resolve manual arrows first so automatic arrows also avoid authored curves.
   for item in &request.annotations {
     if matches!(
       item,
@@ -538,6 +639,8 @@ pub fn compose(request: &Request) -> Result<Drawing, Error> {
         }
       )));
     }
+    // Accepted arrows become obstacles for the next search. Failure above must
+    // remain an error: returning an overlapping fallback would hide lost intent.
     diagram.annotate(core::Annotation::ElectronArrow(result.arrow));
     routing.push(model::RoutedArrow {
       arc_path: match result.arrow.curve {
@@ -558,7 +661,15 @@ pub fn compose(request: &Request) -> Result<Drawing, Error> {
       work_used: result.work_used,
     });
   }
-  let drawing = diagram.render()?;
+  // Debug text is inspection ink, appended after routing; it does not alter the
+  // authored chemical attachments or consume the automatic routing budget.
+  let mut drawing = diagram.render()?;
+  for instance in &request.molecules {
+    let entry = entries
+      .get(instance.id.as_str())
+      .ok_or_else(|| Error::Input("missing occurrence".into()))?;
+    drawing = debug_overlay(drawing, &diagram, instance, entry)?;
+  }
   let bounds = drawing
     .bounds()
     .ok_or_else(|| Error::Input("empty mechanism drawing".into()))?;

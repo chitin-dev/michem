@@ -1,4 +1,9 @@
 //! Serializable layout and paint options; absent fields inherit Chitin defaults.
+//!
+//! JSON option names use kebab-case. Layout distances remain normalized bond
+//! units, while paint dimensions use SVG drawing units. Conversion preserves
+//! explicit dimensions and scales only unspecified dimensions with bond length.
+//! Chitin validates geometry when constructing layouts and drawings.
 
 use std::collections::BTreeMap;
 
@@ -44,6 +49,7 @@ impl Default for Layout {
 }
 
 impl Layout {
+  /// Copies layout limits and distances into Chitin's native options.
   pub(crate) fn options(&self) -> layout::LayoutOptions {
     layout::LayoutOptions {
       max_atoms: self.max_atoms,
@@ -112,9 +118,16 @@ pub enum ChargeStyle {
 }
 
 /// Drawing dimensions are SVG pixels; colors are #RRGGBB or #RRGGBBAA.
+///
+/// At natural size one pixel equals 0.75 Typst points. `font` selects a host
+/// measurement family; it is resolved separately after option conversion.
+/// Debug labels and standalone SVG framing are Michem concerns and are not
+/// passed into Chitin's molecular depiction options.
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Style {
+  /// Show original atom IDs beside every atom, including unlabeled carbons.
+  pub debug: bool,
   /// Enclosure of formal charges: `plain` or `circled`.
   pub charge_style: ChargeStyle,
   /// Font family resolved by Typst; absent retains Chitin's outlined default.
@@ -154,6 +167,7 @@ pub struct Style {
 impl Default for Style {
   fn default() -> Self {
     Self {
+      debug: false,
       charge_style: ChargeStyle::Plain,
       font: None,
       bond_length: 24.,
@@ -175,6 +189,13 @@ impl Default for Style {
   }
 }
 
+/// Parses six- or eight-digit hexadecimal color notation, including its `#`.
+///
+/// # Returns
+/// Straight RGBA channels; six-digit RGB notation receives full opacity.
+///
+/// # Errors
+/// Rejects shorthand, named colors, missing prefixes and nonhexadecimal digits.
 pub(crate) fn color(value: &str) -> Result<Color, Error> {
   let hex = value
     .strip_prefix('#')
@@ -192,6 +213,16 @@ pub(crate) fn color(value: &str) -> Result<Color, Error> {
 }
 
 impl Style {
+  /// Resolves paint policies and bond-relative defaults for native depiction.
+  ///
+  /// # Returns
+  /// Options retaining Chitin's default font. Unspecified dimensions scale with
+  /// `bond_length`; explicit overrides and the dimensionless short-bond ratio
+  /// retain their supplied values. The caller installs any host font afterward.
+  ///
+  /// # Errors
+  /// Rejects malformed foreground/palette colors and unknown element symbols.
+  /// Numeric dimensions are validated later by Chitin's depiction pipeline.
   pub(crate) fn depict_options(&self) -> Result<depict::DepictOptions, Error> {
     let base = depict::DepictOptions::default();
     let ratio = self.bond_length / base.bond_length;
@@ -239,6 +270,11 @@ impl Style {
     })
   }
 
+  /// Converts standalone SVG padding and optional background paint.
+  ///
+  /// # Errors
+  /// Rejects malformed background colors. The SVG exporter validates padding;
+  /// mechanism scenes do not use this standalone framing configuration.
   pub(crate) fn svg_options(&self) -> Result<svg::SvgOptions, Error> {
     Ok(svg::SvgOptions {
       padding: self.padding,

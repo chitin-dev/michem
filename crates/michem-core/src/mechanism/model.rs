@@ -1,4 +1,15 @@
 //! Versioned host requests without serialized graph-local handles.
+//!
+//! Occurrence IDs, atom names and pair IDs are the complete public reference
+//! namespace. Preparation and composition rebuild native handles independently;
+//! callers replay normalized positions rather than persisting a native graph.
+//! Requests reject unknown fields and enum tags, while `serde(default)` marks
+//! wire fields that older callers may omit.
+//!
+//! Unless stated otherwise, positions use y-down SVG drawing units. Prepared
+//! atom positions are the exception: they retain normalized y-up bond units for
+//! lossless reuse as molecular input. Local offsets scale with their occurrence;
+//! reaction connectors and host text obstacles live in shared canvas units.
 
 use crate::Request as MoleculeRequest;
 use serde::{Deserialize, Serialize};
@@ -39,6 +50,11 @@ impl Default for Placement {
 }
 
 /// Complete stateless request; preparation does not allocate persistent handles.
+///
+/// `version` selects the wire contract, not a package version. Occurrence IDs
+/// must be unique within the request; reusing a SMILES string under another ID
+/// creates a separately addressable occurrence. Annotation references are
+/// resolved on composition and do not require declaration order for molecules.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Request {
@@ -148,6 +164,7 @@ impl Default for Routing {
 }
 
 impl Routing {
+  /// Copies per-arrow search limits; composition clamps work to its shared budget.
   pub(super) fn options(&self) -> chitin_chemdraw::diagram::RoutingOptions {
     chitin_chemdraw::diagram::RoutingOptions {
       margin: self.margin,
@@ -255,6 +272,7 @@ impl Default for PairPlacement {
 }
 
 impl PairPlacement {
+  /// Copies local pair-search settings without applying occurrence transforms.
   pub(super) fn options(&self) -> chitin_chemdraw::diagram::LonePairOptions {
     chitin_chemdraw::diagram::LonePairOptions {
       preferred_angle: self.preferred_angle,
@@ -339,6 +357,11 @@ impl Default for Paint {
 }
 
 /// Annotation requests resolved anew against this request's graph namespaces.
+///
+/// This enum describes geometry and supplied electron notation, not reaction
+/// inference. Composition installs fixed marks, then lone pairs, manual arrows
+/// and automatic arrows. A named lone pair can therefore be used by an arrow
+/// regardless of its position in the original annotation list.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Annotation {
@@ -480,6 +503,10 @@ pub struct Anchors {
 }
 
 /// Prepared geometry; the host freezes these coordinates before final placement.
+///
+/// Bounds and anchors already include occurrence scale, but `positions` do not.
+/// Reuse those positions with the same style and scale on composition; applying
+/// the scale to the positions as well would scale molecular geometry twice.
 #[derive(Debug, Serialize)]
 pub struct Prepared {
   /// Occurrence name.
@@ -502,6 +529,11 @@ pub struct Preparation {
 }
 
 /// Painter-ordered transferable commands; geometry is portable vector SVG.
+///
+/// Origins remain in the scene's coordinate frame, including negative values.
+/// The host translates by the scene's minimum bound when painting into a box.
+/// Labels must be drawn as literal content with the supplied family and metrics;
+/// vector layers may be interleaved with them and cannot be reordered by kind.
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Layer {
@@ -536,6 +568,11 @@ pub enum Layer {
 }
 
 /// Final measured scene, independent of page layout or a particular canvas library.
+///
+/// Bounds describe actual molecular and annotation ink, including debug labels.
+/// Host obstacles reserve routing space but are not painted by this scene.
+/// Routing reports record accepted geometric choices; absent reports mean no
+/// automatic arrow was requested, not that reaction chemistry was inferred.
 #[derive(Debug, Serialize)]
 pub struct Drawing {
   /// Wire version.
