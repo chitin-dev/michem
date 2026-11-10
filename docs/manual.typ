@@ -248,10 +248,11 @@ arrows, conditions and compound names are placed by the template.
   are never inferred or chemically balanced. `mechanism` attaches electron flow
   drawn on the leaving stage.
 - `reaction-mechanism(..items, caption: none, gap: 24pt, padding: 6pt,
-  font: none, route: "auto")` wraps mechanism items for a stage or step; an item
-  array is accepted directly as well. Stage compounds are included automatically.
-  `stage-mol(stage, index: 0, id: auto, ...)` optionally overrides one stage
-  participant's occurrence ID, style, layout or placement.
+  font: none, route: "auto", clearance: 2.5, margin: 5, arrow-color: rgb("#2f6f9f"),
+  arrow-width: 1.1, head-length: 5, head-width: 4)` wraps mechanism items for a
+  stage or step; an item array is accepted directly as well. Stage compounds are
+  included automatically. `stage-mol(stage, index: 0, id: auto, ...)` optionally
+  overrides one stage participant's occurrence ID, style, layout or placement.
 - `reaction-route(..stages, steps: auto, ...)` measures and paints the complete
   route. `font: "Libertinus Serif"`, `atom-size: 9pt`, `label-size: 10pt` and
   `bond-length: 18pt` apply consistently to every participant. Lengths here are
@@ -329,13 +330,19 @@ shares the route's stage identifiers for atom and bond references.
 ```)
 
 `reaction-mechanism(..items, caption: none, gap: 24pt, padding: 6pt, font: none,
-route: "auto")` wraps ordinary mechanism items. A step mechanism is drawn on its
-`from` stage; a stage mechanism is drawn on that stage. The stage's compounds are
-inserted automatically, so only auxiliary species, highlights, lone pairs and
-arrows need to be listed. Electron arrows default to `route: "auto"`, which
-treats molecular ink, compound names, plus signs and the stage caption as
-obstacles. Set `route: "manual"` when the authored curves must be preserved
-exactly. A `stage-mol(stage, index: 0, id: auto, ...)` entry is optional:
+route: "auto", clearance: 2.5, margin: 5, arrow-color: rgb("#2f6f9f"),
+arrow-width: 1.1, head-length: 5, head-width: 4)` wraps ordinary mechanism
+items. A step mechanism is drawn on its `from` stage; a stage mechanism is drawn
+on that stage. The stage's compounds are inserted automatically, so only
+auxiliary species, highlights, lone pairs and arrows need to be listed. Electron
+arrows default to `route: "auto"`, which treats molecular ink, compound names,
+plus signs and the stage caption as obstacles. `clearance` keeps arrow ends away
+from atom labels; `margin` keeps the path away from measured ink. The default
+blue arrow color and slightly heavier head distinguish electron flow from black
+bonds. Individual arrows can override these defaults with `style: (color: ...,
+width: ..., clearance: ...)` and `routing: (margin: ...)`. Set `route: "manual"`
+when the authored curves must be preserved exactly. A
+`stage-mol(stage, index: 0, id: auto, ...)` entry is optional:
 it can override one stage participant's occurrence ID, style, layout or
 placement. The default occurrence ID is the stage ID for the first participant
 and `<stage>-<index+1>` otherwise. Reused structures keep the route's molecular
@@ -347,7 +354,9 @@ continuous sequence. `caption` is used as the stage caption when the stage has
 no `label`. A stage can have one mechanism: attach it either to the stage or to
 that stage's outgoing step, not both. Branching stages with multiple outgoing
 steps should put the mechanism on the stage. `font: none` inherits the route
-font.
+font. Auxiliary species are still authored with `mol`; use
+`at: near("stage", atom: ..., side: ..., gap: ...)` to place an attacking
+reagent beside the reacting atom and keep its arrow short.
 
 == Circular mechanism routes
 

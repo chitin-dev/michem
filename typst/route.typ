@@ -8,6 +8,9 @@
 /// `caption` labels the stage when it has no explicit stage label.
 /// `route: "auto"` routes attached electron arrows around molecules, names and
 /// plus signs; `route: "manual"` preserves the authored curves.
+/// `clearance` and `margin` add breathing room around atoms and obstacles.
+/// The default arrow color and weight distinguish electron flow from bonds;
+/// per-arrow style values override them.
 /// A `none` font inherits the enclosing route font.
 #let reaction-mechanism(
   ..items,
@@ -16,6 +19,12 @@
   padding: 6pt,
   font: none,
   route: "auto",
+  clearance: 2.5,
+  margin: 5,
+  arrow-color: rgb("#2f6f9f"),
+  arrow-width: 1.1,
+  head-length: 5,
+  head-width: 4,
 ) = {
   assert(items.named().len() == 0, message: "Unknown reaction-mechanism option")
   assert(
@@ -34,6 +43,16 @@
     route in ("auto", "manual"),
     message: "Reaction mechanism route must be auto or manual",
   )
+  for value in (clearance, margin, arrow-width, head-length, head-width) {
+    assert(
+      type(value) in (int, float) and value >= 0,
+      message: "Reaction mechanism arrow dimensions must be nonnegative",
+    )
+  }
+  assert(
+    type(arrow-color) in (color, str),
+    message: "Reaction mechanism arrow color must be a color or hex string",
+  )
   (
     kind: "reaction-mechanism",
     items: items.pos(),
@@ -42,6 +61,12 @@
     padding: padding,
     font: font,
     route: route,
+    clearance: clearance,
+    margin: margin,
+    "arrow-color": arrow-color,
+    "arrow-width": arrow-width,
+    "head-length": head-length,
+    "head-width": head-width,
   )
 }
 
@@ -292,11 +317,30 @@
 ) = {
   let px(value) = value / 0.75pt
   let route-mode = spec.at("route", default: "auto")
+  let arrow-clearance = spec.at("clearance", default: 2.5)
+  let arrow-margin = spec.at("margin", default: 5)
+  let arrow-color = spec.at("arrow-color", default: "#2f6f9f")
+  if type(arrow-color) == color { arrow-color = arrow-color.to-hex() }
+  let arrow-style = (
+    color: arrow-color,
+    width: spec.at("arrow-width", default: 1.1),
+    "head-length": spec.at("head-length", default: 5),
+    "head-width": spec.at("head-width", default: 4),
+    clearance: arrow-clearance,
+  )
   let route-annotation(item) = if (
-    route-mode == "auto"
-      and type(item) == dictionary
+    type(item) == dictionary
       and item.at("type", default: none) == "electron-arrow"
-  ) { item + (route: "auto") } else { item }
+  ) {
+    (
+      item
+        + (
+          route: if route-mode == "auto" { "auto" } else { item.route },
+          style: arrow-style + item.style,
+          routing: (margin: arrow-margin) + item.routing,
+        )
+    )
+  } else { item }
   let base-style = if spec.font != none {
     options.style + (font: spec.font)
   } else { options.style }

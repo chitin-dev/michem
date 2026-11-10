@@ -31,8 +31,9 @@ stage compound instead of restating its SMILES.
         michem.stage-mol("acid"),
         michem.mol("proton", "[H+]", at: michem.near(
           "acid",
-          side: "south",
-          gap: 24pt,
+          atom: 2,
+          side: "north",
+          gap: 18pt,
         )),
         michem.electron-arrow(
           michem.atom-ref("acid", 2),
@@ -50,6 +51,7 @@ stage compound instead of restating its SMILES.
         michem.stage-mol("protonated"),
         michem.mol("methanol", "CO", at: michem.near(
           "protonated",
+          atom: 1,
           side: "south",
           gap: 28pt,
         )),
