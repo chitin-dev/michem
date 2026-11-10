@@ -14,8 +14,8 @@
 
 #import "typst/compound.typ": compound, compound-grid
 #import "typst/route.typ": (
-  paint-reaction-route, reaction-route, reaction-route-data, reaction-stage,
-  reaction-step,
+  paint-reaction-route, reaction-mechanism, reaction-route, reaction-route-data,
+  reaction-stage, reaction-step, stage-mol,
 )
 
 #import "typst/mechanism.typ": (

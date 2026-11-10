@@ -17,6 +17,9 @@ mechanism: build
 mechanism-layout: build
     typst compile --root . examples/mechanism-layout.typ examples/mechanism-layout.pdf
 
+mechanism-with-route: build
+    typst compile --root . examples/mechanism-with-route.typ examples/mechanism-with-route.pdf
+
 reaction-route: build
     typst compile --root . examples/reaction-route.typ examples/reaction-route.pdf
 

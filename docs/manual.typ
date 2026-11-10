@@ -42,7 +42,10 @@ Choose the molecular font explicitly; document text rules do not set SVG fonts.
   table.header([*Interface*], [*Use it for*]),
   [`smiles`], [An individual SMILES or authored molecular structure.],
   [`compound-grid`], [A gallery with uniform atom size and bond length.],
-  [`reaction-route`], [Automatic chains, branches, joins and circular routes.],
+  [`reaction-route`],
+  [Automatic chains, branches, joins and circular routes,
+    with optional step or stage mechanisms.],
+
   [`mechanism`], [Explicit atom-level electron flow and annotations.],
   [`cetz.molecule`], [Structures and atom anchors on a custom CeTZ canvas.],
 )
@@ -233,15 +236,22 @@ arrows, conditions and compound names are placed by the template.
 
 - `compound(input, name: none, coefficient: none, highlights: ())` describes a SMILES string or
   manual molecular input with its displayed name and explicit coefficient.
-- `reaction-stage(id, ..compounds, label: none)` groups one or more participants.
-  The template inserts plus signs between compounds. Its optional label is a
-  caption for the whole stage.
+- `reaction-stage(id, ..compounds, label: none, mechanism: none)` groups one
+  or more participants. The template inserts plus signs between compounds. Its
+  optional label is a caption for the whole stage, and `mechanism` attaches
+  electron flow drawn on that stage.
 - `reaction-step(from, to, above: none, below: none, equilibrium: false,
-  reactants: (), products: (), branch-curve: auto)` declares
+  reactants: (), products: (), branch-curve: auto, mechanism: none)` declares
   a connection using stage IDs. Pass an array as `steps: (...)`; omitted steps
   connect stages sequentially in declaration order. Branches and joins follow
   the explicitly supplied connections. Coefficients and reaction connectivity
-  are never inferred or chemically balanced.
+  are never inferred or chemically balanced. `mechanism` attaches electron flow
+  drawn on the leaving stage.
+- `reaction-mechanism(..items, caption: none, gap: 24pt, padding: 6pt,
+  font: none, route: "auto")` wraps mechanism items for a stage or step; an item
+  array is accepted directly as well. Stage compounds are included automatically.
+  `stage-mol(stage, index: 0, id: auto, ...)` optionally overrides one stage
+  participant's occurrence ID, style, layout or placement.
 - `reaction-route(..stages, steps: auto, ...)` measures and paints the complete
   route. `font: "Libertinus Serif"`, `atom-size: 9pt`, `label-size: 10pt` and
   `bond-length: 18pt` apply consistently to every participant. Lengths here are
@@ -284,6 +294,60 @@ shared label size are preserved. Circular stages use compact measured cards;
 only participants within the same stage share an image/name row.
 See the highlighted medicinal structures, Suzuki coupling and urea-cycle product
 in the README for complete source and rendered figures.
+
+== Route-attached mechanisms
+
+Attach an electron-flow mechanism directly to a step or stage with `mechanism:`.
+The route remains the single source of the intermediate sequence:
+`stage-mol("acid")` reads the compound declared by that stage, and the mechanism
+shares the route's stage identifiers for atom and bond references.
+
+#example(```typst
+#michem.reaction-route(
+  michem.reaction-stage("acid", michem.compound("CC(=O)O", name: [Acid])),
+  michem.reaction-stage("protonated", michem.compound(
+    "CC(=[OH+])O",
+    name: [Protonated acid],
+  )),
+  steps: (
+    michem.reaction-step("acid", "protonated", above: [H⁺],
+      mechanism: michem.reaction-mechanism(
+        michem.stage-mol("acid"),
+        michem.mol("proton", "[H+]", at: michem.near(
+          "acid", side: "south", gap: 24pt,
+        )),
+        michem.electron-arrow(
+          michem.atom-ref("acid", 2),
+          michem.atom-ref("proton", 0),
+          arc-angle: -55deg,
+        ),
+        caption: [Protonation],
+      ),
+    ),
+  ),
+)
+```)
+
+`reaction-mechanism(..items, caption: none, gap: 24pt, padding: 6pt, font: none,
+route: "auto")` wraps ordinary mechanism items. A step mechanism is drawn on its
+`from` stage; a stage mechanism is drawn on that stage. The stage's compounds are
+inserted automatically, so only auxiliary species, highlights, lone pairs and
+arrows need to be listed. Electron arrows default to `route: "auto"`, which
+treats molecular ink, compound names, plus signs and the stage caption as
+obstacles. Set `route: "manual"` when the authored curves must be preserved
+exactly. A `stage-mol(stage, index: 0, id: auto, ...)` entry is optional:
+it can override one stage participant's occurrence ID, style, layout or
+placement. The default occurrence ID is the stage ID for the first participant
+and `<stage>-<index+1>` otherwise. Reused structures keep the route's molecular
+style, font size, bond length and layout unless overridden. Compound highlights
+travel with them.
+
+The mechanism shares the stage's measured card, so the route remains one
+continuous sequence. `caption` is used as the stage caption when the stage has
+no `label`. A stage can have one mechanism: attach it either to the stage or to
+that stage's outgoing step, not both. Branching stages with multiple outgoing
+steps should put the mechanism on the stage. `font: none` inherits the route
+font.
 
 == Circular mechanism routes
 
@@ -408,20 +472,20 @@ and bond length take precedence over these dictionaries.
 
 Call `reaction-route-data(..stages, steps: auto, max-width: none, ...)` inside
 `context` to inspect stage positions, compound scenes and connector points.
-Its width limit applies to the drawing before optional paint padding.
+Its width limit applies to the route drawing before optional paint padding.
 Use `paint-reaction-route(data, padding: 6pt)` to paint the measured result.
 `compound-grid` accepts `gutter: 18pt`, `row-gap: 18pt` and `name-gap: 5pt`;
 its natural-width columns never rescale their molecular contents. Choose fewer
 columns if the gallery does not fit the page.
 
 See `examples/reaction-route.typ` for participant groups, a compound gallery,
-branching routes and automatic continuation. These templates compose reaction
-schemes; atom-level electron flow remains available through `mechanism` below.
-Reaction-flow examples use these route templates for material inputs and outputs.
-The organic teaching examples put authored electron-flow details in separate
-labeled panels, retaining explicit atom references, new-bond highlights and bridge
-crossing overlays. Resonance contributors retain their distinct double-headed
-resonance arrows.
+branching routes and automatic continuation.
+`examples/mechanism-with-route.typ` draws electron flow directly on route
+stages. These templates compose reaction schemes; electron flow can be attached
+inside a stage or authored in separate labeled panels when a mechanism needs
+more space. The organic teaching examples retain separate panels for explicit
+atom references, new-bond highlights and bridge crossing overlays. Resonance
+contributors retain their distinct double-headed resonance arrows.
 
 = Authored mechanisms
 
@@ -607,6 +671,9 @@ or selected names.
 
   [`examples/mechanism.typ`], [Highlights, lone pairs and electron flow.],
   [`examples/mechanism-layout.typ`], [Measured placement, grids and panels.],
+  [`examples/mechanism-with-route.typ`],
+  [Electron-flow mechanisms drawn directly on route stages.],
+
   [`examples/organic/`],
   [Aldol and deprotonation routes with local electron-flow panels.],
 

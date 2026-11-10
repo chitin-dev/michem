@@ -1,9 +1,169 @@
 // Declarative reaction routes: participant groups, graph placement and connectors.
 #import "compound.typ" as compounds
+#import "mechanism.typ" as mechanisms
 #import "circular-route.typ" as circular
 
+/// An optional electron-flow mechanism attached to a reaction stage or step.
+/// Items use ordinary `mol`, `atom-ref`, `electron-arrow` and related values.
+/// `caption` labels the stage when it has no explicit stage label.
+/// `route: "auto"` routes attached electron arrows around molecules, names and
+/// plus signs; `route: "manual"` preserves the authored curves.
+/// A `none` font inherits the enclosing route font.
+#let reaction-mechanism(
+  ..items,
+  caption: none,
+  gap: 24pt,
+  padding: 6pt,
+  font: none,
+  route: "auto",
+) = {
+  assert(items.named().len() == 0, message: "Unknown reaction-mechanism option")
+  assert(
+    type(gap) == length and gap >= 0pt,
+    message: "Reaction mechanism gap must be a nonnegative length",
+  )
+  assert(
+    type(padding) == length and padding >= 0pt,
+    message: "Reaction mechanism padding must be a nonnegative length",
+  )
+  assert(
+    font == none or (type(font) == str and font != ""),
+    message: "Reaction mechanism font must be a font family name or none",
+  )
+  assert(
+    route in ("auto", "manual"),
+    message: "Reaction mechanism route must be auto or manual",
+  )
+  (
+    kind: "reaction-mechanism",
+    items: items.pos(),
+    caption: caption,
+    gap: gap,
+    padding: padding,
+    font: font,
+    route: route,
+  )
+}
+
+/// Reuse one compound already declared by a reaction stage in a mechanism.
+/// `id` defaults to the stage ID for the first participant.
+#let stage-mol(
+  stage,
+  index: 0,
+  id: auto,
+  at: none,
+  offset: (0pt, 0pt),
+  scale: 1,
+  style: (:),
+  layout: (:),
+) = {
+  assert(
+    type(stage) == str and stage != "",
+    message: "stage-mol requires a nonempty stage ID",
+  )
+  assert(
+    type(index) == int and index >= 0,
+    message: "stage-mol index must be a nonnegative integer",
+  )
+  assert(
+    type(scale) in (int, float) and scale > 0,
+    message: "stage-mol scale must be positive",
+  )
+  let occurrence = if id == auto {
+    if index == 0 { stage } else { stage + "-" + str(index + 1) }
+  } else { id }
+  assert(
+    type(occurrence) == str and occurrence != "",
+    message: "stage-mol ID must be a nonempty string",
+  )
+  (
+    kind: "stage-mol",
+    stage: stage,
+    index: index,
+    id: occurrence,
+    at: at,
+    offset: offset,
+    scale: scale,
+    style: style,
+    layout: layout,
+  )
+}
+
+#let mechanism-spec(value, owner) = {
+  if value == none { return none }
+  if (
+    type(value) == dictionary
+      and value.at("kind", default: none) == "reaction-mechanism"
+  ) {
+    return value
+  }
+  assert(
+    type(value) == array,
+    message: owner
+      + " mechanism must be reaction-mechanism(...) or an array of mechanism items",
+  )
+  reaction-mechanism(..value)
+}
+
+#let resolve-mechanism-items(
+  spec,
+  stages,
+  owner,
+  style: (:),
+  layout: (:),
+) = {
+  let result = ()
+  for item in spec.items {
+    if not (
+      type(item) == dictionary and item.at("kind", default: none) == "stage-mol"
+    ) {
+      result.push(item)
+      continue
+    }
+    let stage = stages.find(stage => stage.id == item.stage)
+    assert(
+      stage != none,
+      message: owner + " references an unknown stage: " + item.stage,
+    )
+    assert(
+      item.index < stage.compounds.len(),
+      message: owner + " references a missing compound in stage " + item.stage,
+    )
+    let participant = stage.compounds.at(item.index)
+    let value = participant
+    let regions = ()
+    if (
+      type(participant) == dictionary
+        and participant.at("kind", default: none) == "compound"
+    ) {
+      value = participant.value
+      regions = participant.at("highlights", default: ())
+    }
+    // Reuse the route's molecular scale and layout; explicit stage-mol overrides win.
+    let resolved-style = style + item.style
+    if "font" not in item.style {
+      // Let the enclosing mechanism font apply to reused structures as well.
+      resolved-style.insert("font", none)
+    }
+    result.push(mechanisms.mol(
+      item.id,
+      value,
+      at: item.at,
+      offset: item.offset,
+      scale: item.scale,
+      style: resolved-style,
+      layout: layout + item.layout,
+    ))
+    for region in regions {
+      result.push(mechanisms.highlight(item.id, ..region))
+    }
+  }
+  result
+}
+
 /// One route stage; plus signs are inserted between its participants.
-#let reaction-stage(id, ..participants, label: none) = {
+/// An attached mechanism is drawn inside this stage.
+#let reaction-stage(id, ..participants, label: none, mechanism: none) = {
   assert(
     type(id) == str and id != "",
     message: "Reaction stage ID must be a nonempty string",
@@ -16,10 +176,17 @@
     participants.pos().len() > 0,
     message: "Reaction stage requires at least one compound",
   )
-  (kind: "reaction-stage", id: id, compounds: participants.pos(), label: label)
+  (
+    kind: "reaction-stage",
+    id: id,
+    compounds: participants.pos(),
+    label: label,
+    mechanism: mechanism-spec(mechanism, "Reaction stage " + id),
+  )
 }
 
 /// A reaction connector with explicit conditions and circular material branches.
+/// An attached mechanism is drawn on the stage this step leaves.
 #let reaction-step(
   from,
   to,
@@ -29,6 +196,7 @@
   reactants: (),
   products: (),
   branch-curve: auto,
+  mechanism: none,
 ) = (
   kind: "reaction-step",
   from: from,
@@ -39,6 +207,10 @@
   reactants: reactants,
   products: products,
   "branch-curve": branch-curve,
+  mechanism: mechanism-spec(
+    mechanism,
+    "Reaction step " + str(from) + " -> " + str(to),
+  ),
 )
 
 #let measured-stage(
@@ -107,6 +279,201 @@
     y: 0pt,
   )
 }
+
+#let mechanism-stage(
+  stage,
+  cards,
+  spec,
+  stages,
+  options,
+  plus,
+  compound-gap,
+  name-gap,
+) = {
+  let px(value) = value / 0.75pt
+  let route-mode = spec.at("route", default: "auto")
+  let route-annotation(item) = if (
+    route-mode == "auto"
+      and type(item) == dictionary
+      and item.at("type", default: none) == "electron-arrow"
+  ) { item + (route: "auto") } else { item }
+  let base-style = if spec.font != none {
+    options.style + (font: spec.font)
+  } else { options.style }
+  // Stage compounds are part of the route, so they are inserted automatically.
+  let molecules = ()
+  let annotations = ()
+  for (index, card) in cards.enumerate() {
+    let id = if index == 0 { stage.id } else { stage.id + "-" + str(index + 1) }
+    let marker = spec.items.find(item => (
+      type(item) == dictionary
+        and item.at("kind", default: none) == "stage-mol"
+        and item.stage == stage.id
+        and item.index == index
+    ))
+    let at = none
+    let offset = (0pt, 0pt)
+    let scale = 1
+    let style = base-style
+    let layout = options.layout
+    if marker != none {
+      id = marker.id
+      at = marker.at
+      offset = marker.offset
+      scale = marker.scale
+      style = base-style + marker.style
+      layout = options.layout + marker.layout
+    }
+    molecules.push(mechanisms.mol(
+      id,
+      card.input.value,
+      at: at,
+      offset: offset,
+      scale: scale,
+      style: style,
+      layout: layout,
+    ))
+    for region in card.input.at("highlights", default: ()) {
+      annotations.push(mechanisms.highlight(id, ..region))
+    }
+  }
+  // Everything else is an auxiliary species or an annotation.
+  for item in spec.items {
+    if (
+      type(item) == dictionary and item.at("kind", default: none) == "stage-mol"
+    ) {
+      if item.stage == stage.id and item.index < cards.len() { continue }
+      let resolved = resolve-mechanism-items(
+        (items: (item,)),
+        stages,
+        "Reaction stage " + stage.id,
+        style: options.style,
+        layout: options.layout,
+      )
+      for value in resolved {
+        if value.at("type", default: none) == "molecule" {
+          molecules.push(value)
+        } else {
+          annotations.push(route-annotation(value))
+        }
+      }
+    } else if (
+      type(item) == dictionary and item.at("type", default: none) == "molecule"
+    ) {
+      molecules.push(
+        item
+          + (
+            style: base-style + item.style,
+            layout: options.layout + item.layout,
+          ),
+      )
+    } else {
+      annotations.push(route-annotation(item))
+    }
+  }
+  let gap = calc.max(spec.gap, 2 * compound-gap + plus.width)
+  let font = if spec.font == none { options.font } else { spec.font }
+  let first = mechanisms.mechanism-data(..molecules, font: font, gap: gap)
+  let placed = molecules
+    .enumerate()
+    .map(((index, item)) => {
+      let placement = first.placements.at(index)
+      item + (at: (placement.origin.at(0), placement.origin.at(1)))
+    })
+  let notes = ()
+  let lows = ()
+  let highs = ()
+  for (index, card) in cards.enumerate() {
+    let placement = first.placements.at(index)
+    let low = placement.bounds.min.zip(placement.origin).map(((a, b)) => a + b)
+    let high = placement.bounds.max.zip(placement.origin).map(((a, b)) => a + b)
+    lows.push(low)
+    highs.push(high)
+    if card.coefficient != none {
+      notes.push(mechanisms.mechanism-label(
+        (
+          low.at(0)
+            - px(card.coefficient-space)
+            + px(card.coefficient.width) / 2,
+          (low.at(1) + high.at(1)) / 2,
+        ),
+        card.coefficient.body,
+      ))
+    }
+  }
+  let content-bottom = first
+    .placements
+    .map(placement => placement.bounds.max.at(1) + placement.origin.at(1))
+    .fold(first.placements.first().bounds.max.at(1), calc.max)
+  let name-top = content-bottom + px(name-gap)
+  let name-bottom = name-top
+  for (index, card) in cards.enumerate() {
+    if card.name == none { continue }
+    let low = lows.at(index)
+    let high = highs.at(index)
+    notes.push(mechanisms.mechanism-label(
+      (
+        (low.at(0) + high.at(0)) / 2,
+        name-top + px(card.name.height) / 2,
+      ),
+      card.name.body,
+    ))
+    name-bottom = calc.max(name-bottom, name-top + px(card.name.height))
+  }
+  for index in range(cards.len() - 1) {
+    let left-low = lows.at(index)
+    let left-high = highs.at(index)
+    let right-low = lows.at(index + 1)
+    let right-high = highs.at(index + 1)
+    notes.push(mechanisms.mechanism-label(
+      (
+        (left-high.at(0) + right-low.at(0)) / 2,
+        (
+          left-low.at(1) + left-high.at(1) + right-low.at(1) + right-high.at(1)
+        )
+          / 4,
+      ),
+      plus.body,
+    ))
+  }
+  let caption = if stage.label != none { stage.label } else { spec.caption }
+  if caption != none {
+    let label = compounds.label(caption, options.font, options.label-size)
+    let left = lows.map(point => point.at(0)).fold(lows.first().at(0), calc.min)
+    let right = highs
+      .map(point => point.at(0))
+      .fold(highs.first().at(0), calc.max)
+    notes.push(mechanisms.mechanism-label(
+      (
+        (left + right) / 2,
+        name-bottom + px(name-gap) + px(label.height) / 2,
+      ),
+      label.body,
+    ))
+  }
+  let data = mechanisms.mechanism-data(
+    ..placed,
+    ..annotations,
+    ..notes,
+    font: font,
+    gap: gap,
+  )
+  let body = mechanisms.paint-mechanism(data, padding: spec.padding)
+  let size = measure(body)
+  (
+    id: stage.id,
+    cards: cards,
+    body: body,
+    width: size.width,
+    height: size.height,
+    image-height: size.height,
+    rank: 0,
+    x: 0pt,
+    y: 0pt,
+    premeasured: true,
+  )
+}
+
 
 #let graph(stages, steps, circular-layout: false) = {
   let ids = stages.map(stage => stage.id)
@@ -428,6 +795,32 @@
     molecular-layout,
   )
   let topology = graph(stages, steps, circular-layout: layout == "circular")
+  // A step mechanism is drawn on the stage it leaves; a stage mechanism is
+  // drawn on that stage directly. One mechanism per stage keeps the route read
+  // as a single sequence rather than a second set of panels.
+  let stage-mechanisms = (:)
+  for edge in topology.edges {
+    let spec = edge.at("mechanism", default: none)
+    if spec == none { continue }
+    assert(
+      stage-mechanisms.at(edge.from, default: none) == none,
+      message: "Multiple step mechanisms target stage "
+        + edge.from
+        + "; attach one mechanism to the stage instead",
+    )
+    stage-mechanisms.insert(edge.from, spec)
+  }
+  for stage in stages {
+    let spec = stage.at("mechanism", default: none)
+    if spec == none { continue }
+    assert(
+      stage-mechanisms.at(stage.id, default: none) == none,
+      message: "Stage "
+        + stage.id
+        + " has both a stage mechanism and an outgoing step mechanism",
+    )
+    stage-mechanisms.insert(stage.id, spec)
+  }
   let participant-count = stages.map(stage => stage.compounds.len()).sum()
   for edge in topology.edges {
     let mode = edge.at("branch-curve", default: auto)
@@ -456,34 +849,54 @@
     participant-count <= 256,
     message: "Reaction route exceeds 256 compounds including step participants",
   )
+  let plus = compounds.label("+", font, label-size)
   let measured = stages.map(stage => {
-    stage.insert("cards", stage.compounds.map(
-      value => compounds.measure-compound(value, options),
+    let cards = stage.compounds.map(value => compounds.measure-compound(
+      value,
+      options,
     ))
-    stage
+    let spec = stage-mechanisms.at(stage.id, default: none)
+    if spec == none {
+      stage.insert("cards", cards)
+      stage
+    } else {
+      mechanism-stage(
+        stage,
+        cards,
+        spec,
+        stages,
+        options,
+        plus,
+        compound-gap,
+        name-gap,
+      )
+    }
   })
   let cards = measured.map(stage => stage.cards).flatten()
   let image-height = cards.map(card => card.image-height).fold(0pt, calc.max)
   let name-height = cards
     .map(card => if card.name == none { 0pt } else { card.name.height })
     .fold(0pt, calc.max)
-  let plus = compounds.label("+", font, label-size)
-  let nodes = measured.map(stage => measured-stage(
-    stage,
-    options,
-    plus,
-    compound-gap,
-    name-gap,
-    if layout == "circular" {
-      stage.cards.map(card => card.image-height).fold(0pt, calc.max)
-    } else { image-height },
-    if layout == "circular" {
-      stage
-        .cards
-        .map(card => if card.name == none { 0pt } else { card.name.height })
-        .fold(0pt, calc.max)
-    } else { name-height },
-  ))
+  let nodes = measured.map(stage => if stage.at("premeasured", default: false) {
+    stage
+  } else {
+    measured-stage(
+      stage,
+      options,
+      plus,
+      compound-gap,
+      name-gap,
+      if layout == "circular" {
+        stage.cards.map(card => card.image-height).fold(0pt, calc.max)
+      } else { image-height },
+      if layout == "circular" {
+        stage
+          .cards
+          .map(card => if card.name == none { 0pt } else { card.name.height })
+          .fold(0pt, calc.max)
+      } else { name-height },
+    )
+  })
   let edges = topology.edges.map(edge => {
     edge.insert("above-label", condition(edge.above, options))
     edge.insert("below-label", condition(edge.below, options))
@@ -753,7 +1166,13 @@
       equilibrium: edge.equilibrium,
     ))
   }
-  finish(nodes, connections, appearance, max-width, selected)
+  finish(
+    nodes,
+    connections,
+    appearance,
+    max-width,
+    selected,
+  )
 }
 
 #let svg-number(value) = str(value).replace("−", "-")
@@ -932,6 +1351,7 @@
 
 /// Automatic route template; steps default to a chain in declaration order.
 /// Available page width drives wrapping. All compounds retain their physical size.
+/// Attached mechanisms are drawn inside the stage they leave.
 #let reaction-route(..stages, steps: auto, max-width: auto, padding: 6pt) = {
   // Named options are forwarded to the measured layout API.
   layout(size => {
